@@ -522,11 +522,41 @@
         return () => clearInterval(interval);
       }, [currentPage, timer]);
 
-      const generateQR = () => {
-        const isTapIn = !activeTrip;
-        setQrData({ type: isTapIn ? "in" : "out", code: `TRIP-${isTapIn ? 'IN' : 'OUT'}-${Date.now()}`, station: isTapIn ? "Halte Dago" : "Halte Dipatiukur" });
-        setTimer(30); setCurrentPage("qr");
-      };
+        // --- Di dalam index.html (App User) ---
+
+    // GANTI fungsi generateQR yang lama dengan yang ini:
+    const generateQR = () => {
+    // 1. Pastikan data user sudah ada
+      if (!userData || !userData.id) {
+          alert("Data user belum dimuat. Mohon tunggu atau login ulang.");
+          return;
+      }
+
+    // 2. PERINGATAN PENTING SOAL MOCK
+    // Kalau kamu login pake mode demo (mock-123), scanner akan error 
+    // karena 'mock-123' bukan UUID valid. Kamu HARUS login beneran (Sign Up/Login).
+      if (userData.id === 'mock-123') {
+          alert("Peringatan: Kamu sedang menggunakan User Demo (mock-123). Scanner mungkin akan error karena database butuh UUID asli. Silakan Logout dan Daftar akun baru.");
+      }
+
+    // 3. Buat data JSON yang berisi User ID asli dari Supabase
+      const ticketData = JSON.stringify({
+          uid: userData.id, // <--- INI KUNCINYA (UUID ASLI)
+          name: userData.name,
+          type: "passenger_ticket"
+      });
+
+    // 4. Tampilkan ke layar
+      setQrData({ 
+          type: "ticket", 
+          code: ticketData, 
+          station: "Tiket Penumpang" 
+      });
+    
+    // Timer opsional (visual saja)
+      setTimer(300); 
+      setCurrentPage("qr");
+    };
 
       const handleScanSuccess = async () => {
         if (!qrData) return;
