@@ -190,6 +190,22 @@
             } catch (e) { return []; }
         }
 
+        // --- FUNGSI BARU UNTUK MENGHAPUS VOUCHER YANG DIGUNAKAN ---
+        async useVoucher(inventoryId) {
+            const uid = await this.getUserId();
+            if (uid === 'mock-123') return;
+
+            const { data: item } = await dbClient.from('user_inventory').select('quantity').eq('id', inventoryId).single();
+            
+            if (item) {
+                if (item.quantity > 1) {
+                    await dbClient.from('user_inventory').update({ quantity: item.quantity - 1 }).eq('id', inventoryId);
+                } else {
+                    await dbClient.from('user_inventory').delete().eq('id', inventoryId);
+                }
+            }
+        }
+
         async getMissionsProgress() {
             const user = await this.getUser();
             return { progress: user.missions_progress || {}, completed: user.completed_missions || [] };
@@ -597,12 +613,24 @@
           setActiveVoucher({ ...voucher, code: randomCode });
       };
 
-      const handleSimulateScanVoucher = () => {
-          setShowVoucherSuccess(true);
-          setTimeout(() => {
-              setShowVoucherSuccess(false);
-              setActiveVoucher(null);
-          }, 7000);
+      const handleSimulateScanVoucher = async () => {
+          if (!activeVoucher) return;
+          
+          try {
+              // Call backend to update DB
+              await backend.useVoucher(activeVoucher.id);
+              
+              // Update local UI
+              setShowVoucherSuccess(true);
+              setTimeout(() => {
+                  setShowVoucherSuccess(false);
+                  setActiveVoucher(null);
+                  loadAllData(); // Reload data to refresh inventory list
+              }, 7000); 
+          } catch (e) {
+              console.error(e);
+              alert("Gagal memproses voucher.");
+          }
       };
 
       const handleClaimMission = async (m) => {
@@ -1015,11 +1043,8 @@
 
                             {/* VOUCHER MENARIK HARI INI (BAWAH) */}
                             <div>
-                                <div className="flex justify-between items-center mb-3">
-                                    <h3 className="font-bold text-gray-900 text-sm uppercase tracking-wide flex items-center gap-2"><span className="text-lg">🔥</span> Voucher Menarik</h3>
-                                    <button onClick={() => setCurrentPage("rewards")} className="text-[10px] font-bold text-brand-blue bg-blue-50 px-2 py-1 rounded-lg">Lihat Semua</button>
-                                </div>
-                                <div className="flex gap-4 overflow-x-auto scrollbar-hide pb-4">
+                                <h3 className="font-bold text-gray-900 mb-3 text-sm uppercase tracking-wide flex items-center gap-2"><span className="text-lg">🔥</span> Voucher Menarik Hari Ini</h3>
+                                <div className="flex gap-4 overflow-x-auto scrollbar-hide pb-2">
                                     {rewardList.filter(r => r.popular).map(r => (
                                         <div key={r.id} className="min-w-[200px] bg-white border border-gray-100 rounded-xl p-4 text-gray-900 relative overflow-hidden shadow-sm flex flex-col">
                                              <div className="flex justify-between items-start mb-3">
