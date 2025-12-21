@@ -455,7 +455,7 @@
         { id: "d2", category: "daily", title: "Jam sibuk", desc: "Naik di jam 07-09 / 16-19", goal: 2, reward: 80, icon: "⏰" },
         { id: "w1", category: "weekly", title: "Rutin ber-Transum", desc: "Naik 10x dlm seminggu", goal: 10, reward: 500, icon: "🎫" },
         { id: "w2", category: "weekly", title: "Konsisten Seminggu", desc: "Min. 1 trip/hari selama 7 hari", goal: 7, reward: 300, icon: "📅" },
-        { id: "w3", category: "weekly", title: "Pejuang Jam Sibuk", desc: "8x perjalanan di jam sibuk", goal: 8, reward: 400, icon: "💼" },
+        { id: "w3", category: "weekly", title: "Pejuang Jam Sibuk", desc: "8x perjalanan di jam sibuk (jam 07-09 / 16-19)", goal: 8, reward: 400, icon: "💼" },
       ]);
 
       useEffect(() => {
@@ -737,7 +737,7 @@
           
           const hasTrippedToday = lastTripStr === todayISO;
 
-          if (!hasTrips) return "Kamu belum naik transportasi umum :(";
+          if (!hasTrips) return "Yah, kamu belum naik transportasi umum :(";
           if (streak === 0) {
               if (lastTripStr) {
                   const lastTripDate = new Date(lastTripStr);
@@ -749,7 +749,7 @@
               return "Ayo mulai petualangan streak barumu hari ini!";
           } 
           if (streak > 0 && !hasTrippedToday) return "Kamu belum naik transportasi hari ini :( Ayo pertahankan semangatmu!";
-          if (streak > 0 && hasTrippedToday) return `${streak} Hari Streak! Pertahankan semangatmu.`;
+          if (streak > 0 && hasTrippedToday) return `Keren! Pertahankan semangatmu!`;
           return "Ayo mulai perjalananmu!";
       };
 
@@ -1055,7 +1055,7 @@
                             {/* VOUCHER MENARIK HARI INI (BAWAH) */}
                             <div>
                                 <div className="flex justify-between items-center mb-3">
-                                    <h3 className="font-bold text-gray-900 text-sm uppercase tracking-wide flex items-center gap-2"><span className="text-lg">🔥</span> Voucher Menarik</h3>
+                                    <h3 className="font-bold text-gray-900 text-sm uppercase tracking-wide flex items-center gap-2"><span className="text-lg">🔥</span> Voucher Menarik Hari Ini!</h3>
                                     <button onClick={() => setCurrentPage("rewards")} className="text-[10px] font-bold text-brand-blue bg-blue-50 px-2 py-1 rounded-lg">Lihat Semua</button>
                                 </div>
                                 <div className="flex gap-4 overflow-x-auto scrollbar-hide pb-2">
@@ -1192,7 +1192,7 @@
                             <div className="flex gap-4 mt-6">
                                 <div className="bg-white/10 border border-brand-yellow/50 rounded-xl p-3 flex-1 backdrop-blur-sm"><span className="text-xs text-blue-200 block">Poin Saat Ini</span><span className="font-bold text-xl">{userData?.points || 0}</span></div>
                                 <div className="bg-white/10 border border-brand-yellow/50 rounded-xl p-3 flex-1 backdrop-blur-sm"><span className="text-xs text-blue-200 block">Trip Hari Ini</span><span className="font-bold text-xl">{myWeeklyStats.todayCount}</span></div>
-                                <div className="bg-white/10 border border-brand-yellow/50 rounded-xl p-3 flex-1 backdrop-blur-sm"><span className="text-xs text-blue-200 block">Voucher Claimed</span><span className="font-bold text-xl">{inventory.reduce((a,b)=>a+b.quantity,0)}</span></div>
+                                <div className="bg-white/10 border border-brand-yellow/50 rounded-xl p-3 flex-1 backdrop-blur-sm"><span className="text-xs text-blue-200 block">Jumlah Voucher</span><span className="font-bold text-xl">{inventory.reduce((a,b)=>a+b.quantity,0)}</span></div>
                             </div>
                         </div>
                         <div className="px-6 pb-6">
