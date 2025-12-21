@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>Transportasi Gamifikasi - Progress 5 (QR Logic)</title>
+  <title>Transportasi Gamifikasi - User</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <!-- Font Inter -->
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -11,14 +11,16 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
   <!-- Supabase JS -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
 
   <style>
     body { font-family: 'Inter', sans-serif; -webkit-tap-highlight-color: transparent; background-color: #F3F4F6; }
     .scrollbar-hide::-webkit-scrollbar { display: none; }
     .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
-    .clean-card { background: #FFFFFF; border: 1px solid #E5E7EB; box-shadow: 0 1px 2px rgba(0,0,0,0.05); border-radius: 16px; overflow: hidden; }
+    .clean-card { background: #FFFFFF; border: 1px solid #E5E7EB; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05); border-radius: 20px; overflow: hidden; }
     .clean-btn { transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1); }
-    .clean-btn:active { transform: scale(0.96); }
+    .clean-btn:active { transform: scale(0.95); }
     .progress-track { background-color: #F3F4F6; border-radius: 9999px; height: 8px; overflow: hidden; }
     .progress-fill { background-color: #2563EB; height: 100%; border-radius: 9999px; transition: width 0.5s ease-out; }
     @keyframes pulse-dot { 0% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.4); } 70% { box-shadow: 0 0 0 6px rgba(34, 197, 94, 0); } 100% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0); } }
@@ -27,13 +29,19 @@
     @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
     @keyframes pop-up { 0% { transform: scale(0.9); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
     .animate-pop { animation: pop-up 0.2s ease-out forwards; }
+    
+    .font-mono-code { font-family: 'Courier New', Courier, monospace; letter-spacing: 2px; }
+    
+    /* Gradients */
+    .bg-gradient-primary { background: linear-gradient(135deg, #2563EB 0%, #4F46E5 100%); }
+    .bg-gradient-yellow { background: linear-gradient(135deg, #FACC15 0%, #EAB308 100%); }
   </style>
   <script>
     tailwind.config = {
       theme: {
         extend: {
           colors: {
-            brand: { black: '#111827', gray: '#6B7280', blue: '#2563EB', green: '#059669', red: '#DC2626', orange: '#EA580C' }
+            brand: { black: '#111827', gray: '#6B7280', blue: '#2563EB', green: '#059669', red: '#DC2626', orange: '#EA580C', yellow: '#FACC15' }
           }
         }
       }
@@ -67,75 +75,119 @@
     } catch (err) { console.error("Supabase init error:", err); }
 
     // ==========================================
-    // 🛠️ BACKEND SERVICE (WITH OFFLINE FALLBACK)
+    // 🛠️ BACKEND SERVICE
     // ==========================================
     class SupabaseBackendService {
         constructor() { 
             this.userId = null; 
-            // Local Mock Data State
-            this.mockUser = { id: 'mock-123', name: 'Kanaya', points: 1250, streak: 5, last_trip_date: '2023-10-27', missions_progress: { d1: 1 }, completed_missions: [] };
-            this.mockTrip = null;
-            this.mockInventory = [];
+            this.mockUser = { id: 'mock-123', name: 'Kanaya', points: 1250, balance: 25000, streak: 5, last_trip_date: '2023-10-27', missions_progress: { d1: 1 }, completed_missions: [] };
         }
 
         async getUserId() {
-            try {
-                if (this.userId) return this.userId;
-                if (!dbClient) throw new Error("No DB");
-                const { data: { user }, error } = await dbClient.auth.getUser();
-                if (error || !user) throw error;
+            if (this.userId) return this.userId;
+            if (!dbClient) throw new Error("No DB");
+            const { data: { user } } = await dbClient.auth.getUser();
+            if (user) {
                 this.userId = user.id;
                 return user.id;
-            } catch (e) {
-                console.warn("Backend unavailable, using mock user ID.");
-                this.userId = this.mockUser.id;
-                return this.userId;
             }
+            return 'mock-123'; 
         }
 
         async getUser() {
             try {
                 const uid = await this.getUserId();
                 if (uid === 'mock-123') return this.mockUser;
-
                 const { data, error } = await dbClient.from('profiles').select('*').eq('id', uid).single();
                 if (error) { 
-                    if (error.code === 'PGRST116') return { name: 'New User', points: 0, streak: 0, last_trip_date: null }; 
+                    if (error.code === 'PGRST116') return { name: 'New User', points: 0, balance: 0, streak: 0 }; 
                     throw error; 
                 }
-                if (!data.last_trip_date && data.missions_progress && data.missions_progress.last_trip_date) {
-                    data.last_trip_date = data.missions_progress.last_trip_date;
-                }
+                if (data.balance === undefined || data.balance === null) data.balance = 0;
                 return data;
-            } catch (e) {
-                console.warn("Using Mock User Data");
-                return this.mockUser;
+            } catch (e) { return this.mockUser; }
+        }
+
+        async updateUserBalance(uid, newBalance) {
+            if (uid === 'mock-123') {
+                this.mockUser.balance = newBalance;
+                return;
             }
+            await dbClient.from('profiles').update({ balance: newBalance }).eq('id', uid);
+        }
+        
+        async updateUserPointsAndStreak(uid, newPoints, newStreak, lastTripDate) {
+             if (uid === 'mock-123') {
+                this.mockUser.points = newPoints;
+                this.mockUser.streak = newStreak;
+                this.mockUser.last_trip_date = lastTripDate;
+                return;
+            }
+            await dbClient.from('profiles').update({ 
+                points: newPoints,
+                streak: newStreak,
+                last_trip_date: lastTripDate
+            }).eq('id', uid);
+        }
+
+        // NEW: Wallet Transactions using DB
+        async getWalletTransactions(uid) {
+            if (uid === 'mock-123') return [];
+            try {
+                const { data, error } = await dbClient
+                    .from('wallet_transactions')
+                    .select('*')
+                    .eq('user_id', uid)
+                    .order('created_at', { ascending: false });
+                if (error) throw error;
+                return data || [];
+            } catch (e) { console.error(e); return []; }
+        }
+
+        async addWalletTransaction(uid, amount, desc, type) {
+            if (uid === 'mock-123') return;
+            try {
+                await dbClient.from('wallet_transactions').insert({
+                    user_id: uid,
+                    amount: amount,
+                    description: desc,
+                    type: type
+                });
+            } catch (e) { console.error(e); }
         }
 
         async getActiveTrip() {
             try {
                 const uid = await this.getUserId();
-                if (uid === 'mock-123') return this.mockTrip;
-
-                const { data, error } = await dbClient.from('trips').select('*').eq('user_id', uid).eq('status', 'active').order('start_time', { ascending: false }).limit(1).maybeSingle(); 
+                if (uid === 'mock-123') return null;
+                const { data, error } = await dbClient.from('trips').select('*').eq('user_id', uid).eq('status', 'active').maybeSingle(); 
                 if (error) throw error;
                 return data; 
-            } catch (e) {
-                return this.mockTrip;
-            }
+            } catch (e) { return null; }
+        }
+
+        async getTripHistory() {
+            try {
+                const uid = await this.getUserId();
+                if (uid === 'mock-123') return [];
+                const { data, error } = await dbClient
+                    .from('trips')
+                    .select('*')
+                    .eq('user_id', uid)
+                    .order('created_at', { ascending: false }) 
+                    .limit(50);
+                if (error) throw error;
+                return data || [];
+            } catch(e) { return []; }
         }
 
         async getInventory() {
             try {
                 const uid = await this.getUserId();
-                if (uid === 'mock-123') return this.mockInventory;
-
-                const { data, error } = await dbClient.from('user_inventory').select('*').eq('user_id', uid);
+                if (uid === 'mock-123') return [];
+                const { data } = await dbClient.from('user_inventory').select('*').eq('user_id', uid);
                 return data || [];
-            } catch (e) {
-                return this.mockInventory;
-            }
+            } catch (e) { return []; }
         }
 
         async getMissionsProgress() {
@@ -143,175 +195,78 @@
             return { progress: user.missions_progress || {}, completed: user.completed_missions || [] };
         }
 
-        async startTrip(station, busId) {
-            const uid = await this.getUserId();
-            const timeString = new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false });
-            
-            // Mock Logic
-            if (uid === 'mock-123') {
-                this.mockTrip = { id: 'trip-' + Date.now(), user_id: uid, start_time: timeString, start_station: station, bus_id: busId, status: 'active' };
-                return this.mockTrip;
-            }
-
-            try {
-                const newTrip = { user_id: uid, start_time: timeString, start_station: station, bus_id: busId, status: 'active' };
-                const { data, error } = await dbClient.from('trips').insert(newTrip).select().single();
-                if (error) throw error; 
-                return data;
-            } catch (e) {
-                console.warn("Using Mock Trip Start");
-                this.mockTrip = { id: 'trip-' + Date.now(), user_id: uid, start_time: timeString, start_station: station, bus_id: busId, status: 'active' };
-                return this.mockTrip;
-            }
-        }
-
-        async endTrip(station) {
-            const uid = await this.getUserId();
-            const activeTrip = await this.getActiveTrip();
-            
-            if (!activeTrip) throw new Error("Tidak ada perjalanan aktif.");
-            
-            const pointsToAdd = 150;
-            const timeString = new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false });
-            const todayStr = new Date().toISOString().split('T')[0];
-
-            // Update Local Mock Data Logic
-            const updateMockUser = () => {
-                this.mockUser.points += pointsToAdd;
-                // Simple streak logic
-                if (this.mockUser.last_trip_date !== todayStr) {
-                    this.mockUser.streak += 1;
-                }
-                this.mockUser.last_trip_date = todayStr;
-                this.mockUser.missions_progress = { ...this.mockUser.missions_progress, d1: (this.mockUser.missions_progress.d1 || 0) + 1 };
-                this.mockTrip = null; // Clear trip
-                return { 
-                    points_earned: pointsToAdd,
-                    start_station: activeTrip.start_station,
-                    end_station: station
-                };
-            };
-
-            if (uid === 'mock-123') {
-                return updateMockUser();
-            }
-
-            try {
-                const { error: tripError } = await dbClient.from('trips').update({ end_station: station, end_time: timeString, status: 'completed', points_earned: pointsToAdd }).eq('id', activeTrip.id);
-                if (tripError) throw tripError;
-
-                const user = await this.getUser();
-                const newPoints = (user.points || 0) + pointsToAdd;
-                
-                let currentProgress = user.missions_progress || {};
-                if (!currentProgress['d1']) currentProgress['d1'] = 0;
-                if (currentProgress['d1'] < 2) currentProgress['d1'] += 1;
-
-                const lastTripDate = user.last_trip_date;
-                let newStreak = user.streak || 0;
-                if (lastTripDate !== todayStr) { newStreak += 1; }
-                currentProgress.last_trip_date = todayStr;
-
-                const { error: profileError } = await dbClient.from('profiles').update({ points: newPoints, missions_progress: currentProgress, streak: newStreak }).eq('id', uid);
-                if (profileError) throw profileError;
-                
-                return { 
-                    points_earned: pointsToAdd,
-                    start_station: activeTrip.start_station,
-                    end_station: station
-                };
-            } catch (e) {
-                console.warn("Using Mock End Trip");
-                return updateMockUser();
-            }
-        }
-
         async redeemReward(reward) {
             const uid = await this.getUserId();
             const user = await this.getUser();
-            
             if (user.points < reward.points) throw new Error("Poin tidak cukup");
+            if (uid === 'mock-123') return;
 
-            // Mock Logic
-            if (uid === 'mock-123') {
-                this.mockUser.points -= reward.points;
-                const existing = this.mockInventory.find(i => i.item_id === reward.id);
-                if (existing) existing.quantity++;
-                else this.mockInventory.push({ id: 'inv-'+Date.now(), user_id: uid, item_id: reward.id, name: reward.name, desc_text: reward.desc, icon: reward.icon, quantity: 1 });
-                return;
-            }
+            const { error: userError } = await dbClient.from('profiles').update({ points: user.points - reward.points }).eq('id', uid);
+            if (userError) throw userError;
 
-            try {
-                const { error: userError } = await dbClient.from('profiles').update({ points: user.points - reward.points }).eq('id', uid);
-                if (userError) throw userError;
-
-                const { data: existingItem } = await dbClient.from('user_inventory').select('*').eq('user_id', uid).eq('item_id', reward.id).maybeSingle();
-
-                if (existingItem) {
-                    await dbClient.from('user_inventory').update({ quantity: existingItem.quantity + 1 }).eq('id', existingItem.id);
-                } else {
-                    await dbClient.from('user_inventory').insert({ user_id: uid, item_id: reward.id, name: reward.name, desc_text: reward.desc, icon: reward.icon, quantity: 1, date_acquired: new Date().toLocaleDateString('id-ID') });
-                }
-            } catch (e) {
-                console.warn("Using Mock Redeem");
-                // Apply logic to mock user
-                this.mockUser.points -= reward.points;
-                const existing = this.mockInventory.find(i => i.item_id === reward.id);
-                if (existing) existing.quantity++;
-                else this.mockInventory.push({ id: 'inv-'+Date.now(), user_id: uid, item_id: reward.id, name: reward.name, desc_text: reward.desc, icon: reward.icon, quantity: 1 });
+            const { data: existingItem } = await dbClient.from('user_inventory').select('*').eq('user_id', uid).eq('item_id', reward.id).maybeSingle();
+            if (existingItem) {
+                await dbClient.from('user_inventory').update({ quantity: existingItem.quantity + 1 }).eq('id', existingItem.id);
+            } else {
+                await dbClient.from('user_inventory').insert({ user_id: uid, item_id: reward.id, name: reward.name, desc_text: reward.desc, icon: reward.icon, quantity: 1, date_acquired: new Date().toLocaleDateString('id-ID') });
             }
         }
 
         async claimMission(missionId, rewardPoints) {
-            // Simplification: In mock mode, just add points
             const uid = await this.getUserId();
             const user = await this.getUser();
+            if (uid === 'mock-123') return;
+
+            let completed = user.completed_missions || [];
+            if (completed.includes(missionId)) return;
+            completed.push(missionId);
             
-            if (uid === 'mock-123') {
-                if(!this.mockUser.completed_missions.includes(missionId)){
-                    this.mockUser.completed_missions.push(missionId);
-                    this.mockUser.points += rewardPoints;
+            await dbClient.from('profiles').update({ 
+                points: (user.points || 0) + rewardPoints, 
+                completed_missions: completed 
+            }).eq('id', uid);
+        }
+
+        async getWeeklyLeaderboard() {
+            try {
+                const now = new Date();
+                const day = now.getDay(); 
+                const diff = now.getDate() - day + (day === 0 ? -6 : 1); 
+                const monday = new Date(now.setDate(diff));
+                monday.setHours(0, 0, 0, 0);
+                const startOfWeekISO = monday.toISOString();
+
+                const { data: profiles, error: errProfile } = await dbClient.from('profiles').select('id, name, points'); 
+                if (errProfile) throw errProfile;
+
+                const { data: weeklyTrips, error: errTrips } = await dbClient
+                    .from('trips')
+                    .select('user_id, points_earned')
+                    .eq('status', 'completed')
+                    .gte('created_at', startOfWeekISO);
+
+                if (errTrips) throw errTrips;
+
+                const weeklyStats = {}; 
+                profiles.forEach(p => {
+                    weeklyStats[p.id] = { id: p.id, name: p.name || 'User', total_balance: p.points, weekly_points: 0, weekly_trips: 0 };
+                });
+
+                if (weeklyTrips) {
+                    weeklyTrips.forEach(t => {
+                        if (weeklyStats[t.user_id]) {
+                            weeklyStats[t.user_id].weekly_points += (t.points_earned || 0);
+                            weeklyStats[t.user_id].weekly_trips += 1;
+                        }
+                    });
                 }
-                return;
-            }
 
-            try {
-                let completed = user.completed_missions || [];
-                if (completed.includes(missionId)) return;
-                completed.push(missionId);
-                await dbClient.from('profiles').update({ points: user.points + rewardPoints, completed_missions: completed }).eq('id', uid);
-            } catch (e) {
-                console.warn("Mock Claim Mission");
-            }
+                return Object.values(weeklyStats).sort((a, b) => b.weekly_points - a.weekly_points || b.weekly_trips - a.weekly_trips);
+            } catch (e) { return []; }
         }
 
-        async getLeaderboard() {
-            // Fallback Leaderboard
-            const mockLeaderboard = [
-                { id: 'u1', name: 'Andi Bus', points: 2100 },
-                { id: 'u2', name: 'Siti Train', points: 1950 },
-                { id: 'mock-123', name: 'Kanaya', points: 1250 }, // User
-                { id: 'u4', name: 'Budi Way', points: 1100 },
-                { id: 'u5', name: 'Citra Go', points: 900 },
-            ];
-
-            try {
-                const { data, error } = await dbClient.from('profiles').select('id, name, points').order('points', { ascending: false }).limit(20);
-                if (error) return mockLeaderboard;
-                return data;
-            } catch (e) {
-                return mockLeaderboard;
-            }
-        }
-
-        async getMyRealRank(myPoints) {
-            try {
-                const { count, error } = await dbClient.from('profiles').select('*', { count: 'exact', head: true }).gt('points', myPoints);
-                if (error) return 3; // Mock rank
-                return count + 1;
-            } catch (e) {
-                return 3; // Mock rank
-            }
+        async signOut() {
+            try { await dbClient.auth.signOut(); window.location.reload(); } catch (e) { console.error(e); }
         }
     }
 
@@ -329,11 +284,18 @@
       Zap: (p) => <svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>,
       Bus: (p) => <svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M8 6v6"/><path d="M15 6v6"/><path d="M2 12h19.6"/><path d="M18 18h3s.5-1.7.8-2.8c.1-.4.2-.8.2-1.2 0-.4-.1-.8-.2-1.2l-1.4-5C20.1 6.8 19.1 6 18 6H4a2 2 0 0 0-2 2v10h3"/><circle cx="7" cy="18" r="2"/><path d="M9 18h5"/><circle cx="16" cy="18" r="2"/></svg>,
       ArrowRight: (p) => <svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="5" x2="19" y1="12" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>,
-      ChevronLeft: (p) => <svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6"/></svg>,
-      Clock: (p) => <svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>,
       X: (p) => <svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M17.5 6.5l-11 11"/><path d="M6.5 6.5l11 11"/></svg>,
       Flame: (p) => <svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/></svg>,
-      Check: (p) => <svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+      Check: (p) => <svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>,
+      Clock: (p) => <svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>,
+      LogOut: (p) => <svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/></svg>,
+      History: (p) => <svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 16h5v5"/><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M8 8H3V3"/><polyline points="12 7 12 12 15 15"/></svg>,
+      Barcode: (p) => <svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 5v14"/><path d="M8 5v14"/><path d="M12 5v14"/><path d="M17 5v14"/><path d="M21 5v14"/></svg>,
+      Wallet: (p) => <svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 12V8H6a2 2 0 0 1-2-2c0-1.1.9-2 2-2h12v4"/><path d="M4 6v12c0 1.1.9 2 2 2h14v-4"/><path d="M18 12a2 2 0 0 0-2 2c0 1.1.9 2 2 2h4v-4h-4z"/></svg>,
+      Plus: (p) => <svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>,
+      Bill: (p) => <svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>,
+      Shield: (p) => <svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>,
+      Star: (p) => <svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
     };
 
     function QRCodeRenderer({ text }) {
@@ -347,54 +309,31 @@
       return <div ref={qrRef} className="p-4 bg-white rounded-2xl border border-gray-100 inline-block" />;
     }
 
-    // --- AUTH SCREEN COMPONENT ---
     function AuthScreen({ onLoginSuccess }) {
         const [email, setEmail] = useState("");
         const [password, setPassword] = useState("");
         const [loading, setLoading] = useState(false);
         const [isSignUp, setIsSignUp] = useState(false);
         const [errorMsg, setErrorMsg] = useState("");
-        const [successMsg, setSuccessMsg] = useState("");
 
         const handleAuth = async (e) => {
             e.preventDefault();
-            setErrorMsg(""); setSuccessMsg("");
-            
-            // Bypass Auth for Demo if Supabase is offline
-            if (!dbClient) { 
-                setLoading(true);
-                setTimeout(() => onLoginSuccess({ user: { id: 'mock-123' } }), 1000);
-                return;
-            }
-
-            setLoading(true);
+            setErrorMsg(""); setLoading(true);
             try {
                 if (isSignUp) {
                     const { data, error } = await dbClient.auth.signUp({ email, password, options: { data: { name: email.split('@')[0] } } });
                     if (error) throw error;
-                    if (data.user && !data.session) {
-                        setSuccessMsg("Pendaftaran berhasil! Cek email untuk verifikasi.");
-                        setIsSignUp(false);
-                    } else {
-                        if (onLoginSuccess && data.session) onLoginSuccess(data.session);
-                    }
+                    if (data.session) onLoginSuccess(data.session);
+                    else alert("Cek email untuk verifikasi!");
                 } else {
                     const { data, error } = await dbClient.auth.signInWithPassword({ email, password });
                     if (error) throw error;
-                    if (onLoginSuccess && data.session) onLoginSuccess(data.session);
+                    onLoginSuccess(data.session);
                 }
             } catch (err) {
-                // FALLBACK FOR DEMO: Allow login even if API fails
-                console.warn("Auth failed, switching to demo mode", err);
-                if (email && password) {
-                    onLoginSuccess({ user: { id: 'mock-123' } });
-                } else {
-                    let msg = err.message;
-                    if (msg.includes("Password should be")) msg = "Password minimal 6 karakter.";
-                    else if (msg.includes("Email not confirmed")) msg = "Email belum diverifikasi. Cek inbox/spam.";
-                    else if (msg.includes("Invalid login")) msg = "Email atau password salah.";
-                    setErrorMsg(msg);
-                }
+                console.warn(err);
+                if (email.includes('demo')) onLoginSuccess({ user: { id: 'mock-123' } });
+                else setErrorMsg(err.message);
             } finally { setLoading(false); }
         };
 
@@ -403,14 +342,13 @@
                 <div className="w-full clean-card p-8 border-t-4 border-t-brand-blue">
                     <h2 className="text-2xl font-bold text-gray-900 mb-2">{isSignUp ? "Daftar Akun" : "Masuk"}</h2>
                     <p className="text-sm text-gray-500 mb-6">Mulai kumpulkan poin perjalananmu.</p>
-                    {errorMsg && <div className="mb-4 p-3 bg-red-50 border border-red-100 rounded-xl text-xs text-red-600 font-medium">{errorMsg}</div>}
-                    {successMsg && <div className="mb-4 p-3 bg-green-50 border border-green-100 rounded-xl text-xs text-green-600 font-medium">{successMsg}</div>}
+                    {errorMsg && <div className="mb-4 p-3 bg-red-50 text-red-600 text-xs rounded">{errorMsg}</div>}
                     <form onSubmit={handleAuth} className="space-y-4">
                         <input type="email" required value={email} onChange={e => setEmail(e.target.value)} className="w-full p-3 rounded-lg border border-gray-200 outline-none" placeholder="nama@email.com" />
                         <input type="password" required value={password} onChange={e => setPassword(e.target.value)} className="w-full p-3 rounded-lg border border-gray-200 outline-none" placeholder="••••••••" />
                         <button type="submit" disabled={loading} className="w-full bg-brand-blue text-white py-3 rounded-xl font-bold clean-btn flex justify-center mt-6">{loading ? <div className="spinner w-5 h-5"></div> : (isSignUp ? "Daftar Sekarang" : "Masuk")}</button>
                     </form>
-                    <div className="mt-6 text-center"><button onClick={() => { setIsSignUp(!isSignUp); setErrorMsg(""); }} className="text-sm text-brand-blue font-semibold hover:underline">{isSignUp ? "Sudah punya akun? Masuk" : "Belum punya akun? Daftar"}</button></div>
+                    <button onClick={() => setIsSignUp(!isSignUp)} className="mt-4 text-sm text-brand-blue w-full text-center">{isSignUp ? "Sudah punya akun? Masuk" : "Buat akun baru"}</button>
                 </div>
             </div>
         );
@@ -438,486 +376,836 @@
       );
     }
 
-    function PageShell({ children, currentPage, setCurrentPage }) {
-      return (
-        <div className="max-w-md mx-auto h-screen overflow-hidden flex flex-col bg-[#F9FAFB] relative shadow-2xl">
-          <div className="flex-1 overflow-y-auto pb-24 scrollbar-hide">{children}</div>
-          <BottomNav currentPage={currentPage} setCurrentPage={setCurrentPage} />
-        </div>
-      );
-    }
-
     // --- MAIN APP COMPONENT ---
     function App() {
       const [session, setSession] = useState(null);
       const [authChecking, setAuthChecking] = useState(true);
       const [currentPage, setCurrentPage] = useState("home");
       const [isLoading, setIsLoading] = useState(false);
-      const [processingAction, setProcessingAction] = useState(false);
       const [userData, setUserData] = useState(null);
       const [activeTrip, setActiveTrip] = useState(null);
-      const [lastTripResult, setLastTripResult] = useState(null); // New state for trip summary
       const [inventory, setInventory] = useState([]);
       const [missionsData, setMissionsData] = useState({ progress: {}, completed: [] });
       const [leaderboard, setLeaderboard] = useState([]);
-      const [myRealRank, setMyRealRank] = useState(null);
+      const [myRank, setMyRank] = useState('-');
+      const [tripHistory, setTripHistory] = useState([]);
       const [qrData, setQrData] = useState(null); 
       const [timer, setTimer] = useState(0);
-      const [rewardTab, setRewardTab] = useState("catalog"); 
-      const [selectedCategory, setSelectedCategory] = useState("all");
-      const [confirmModal, setConfirmModal] = useState(null);
-      
-      // STATE BARU: Pop-up Streak
       const [showStreakModal, setShowStreakModal] = useState(false);
+      const [confirmModal, setConfirmModal] = useState(null);
+      const [showHistoryModal, setShowHistoryModal] = useState(false);
+      const [showLowBalanceModal, setShowLowBalanceModal] = useState(false);
+      const [showStreakRescueModal, setShowStreakRescueModal] = useState(false);
+      const [targetRescueDate, setTargetRescueDate] = useState(null);
+      
+      // Wallet States
+      const [showTopUpModal, setShowTopUpModal] = useState(false);
+      const [showWalletHistoryModal, setShowWalletHistoryModal] = useState(false);
+      const [walletHistory, setWalletHistory] = useState([]);
+      const [topUpAmount, setTopUpAmount] = useState(null);
+      
+      const [myWeeklyStats, setMyWeeklyStats] = useState({ points: 0, count: 0, todayCount: 0 });
+      const [activeVoucher, setActiveVoucher] = useState(null);
+      const [showVoucherSuccess, setShowVoucherSuccess] = useState(false);
+      const [rewardTab, setRewardTab] = useState("catalog");
+      const [selectedCategory, setSelectedCategory] = useState("all");
 
-      const [rewardList] = useState([
-        { id: 1, name: "Chatime", desc: "Diskon 30% all item", points: 500, category: "drink", stock: 12, icon: "🧋" },
-        { id: 2, name: "Fore Coffee", desc: "Gratis Upsize", points: 350, category: "drink", stock: 8, icon: "☕" },
-        { id: 3, name: "McDonald's", desc: "Beli 1 Gratis 1", points: 800, category: "food", stock: 5, icon: "🍔" },
-        { id: 4, name: "Indomaret", desc: "Voucher 20rb", points: 400, category: "shopping", stock: 20, icon: "🛒" },
-        { id: 5, name: "Kantin Soejo (Labtek VIII)", desc: "Voucher 10rb", points: 150, category: "food", stock: 15, icon: "🍛" },
+      const [rewardList, setRewardList] = useState([
+        { id: 1, name: "Chatime", desc: "Diskon 30% all item", points: 500, category: "drink", stock: 25, icon: "🧋", popular: true },
+        { id: 2, name: "Fore Coffee", desc: "Gratis Upsize", points: 350, category: "drink", stock: 25, icon: "☕" },
+        { id: 3, name: "McDonald's", desc: "Beli 1 Gratis 1", points: 800, category: "food", stock: 25, icon: "🍔", popular: true },
+        { id: 4, name: "Indomaret", desc: "Voucher 20rb", points: 400, category: "shopping", stock: 25, icon: "🛒" },
+        { id: 5, name: "Kantin Soejo", desc: "Voucher 10rb", points: 150, category: "food", stock: 25, icon: "🍛" },
       ]);
 
       const [missionDefinitions] = useState([
-        { id: "d1", type: "Harian", title: "Naik transportasi umum", desc: "2 perjalanan hari ini", goal: 2, reward: 120, icon: "🚌" },
-        { id: "d2", type: "Harian", title: "Jam sibuk", desc: "Naik jam 07-09 atau 17-19", goal: 1, reward: 80, icon: "⏰" },
-        { id: "w1", type: "Mingguan", title: "Konsisten seminggu", desc: "5 perjalanan minggu ini", goal: 5, reward: 300, icon: "📅" },
+        { id: "d1", category: "daily", title: "Naik transportasi umum", desc: "2 perjalanan hari ini", goal: 2, reward: 120, icon: "🚌" },
+        { id: "d2", category: "daily", title: "Jam sibuk", desc: "Naik di jam 07-09 / 16-19", goal: 2, reward: 80, icon: "⏰" },
+        { id: "w1", category: "weekly", title: "Rutin ber-Transum", desc: "Naik 10x dlm seminggu", goal: 10, reward: 500, icon: "🎫" },
+        { id: "w2", category: "weekly", title: "Konsisten Seminggu", desc: "Min. 1 trip/hari selama 7 hari", goal: 7, reward: 300, icon: "📅" },
+        { id: "w3", category: "weekly", title: "Pejuang Jam Sibuk", desc: "8x perjalanan di jam sibuk", goal: 8, reward: 400, icon: "💼" },
       ]);
 
       useEffect(() => {
-        if (!dbClient) { setAuthChecking(false); return; }
-        
-        // Safe check for session
-        try {
-            dbClient.auth.getSession().then(({ data: { session } }) => {
-                setSession(session); setAuthChecking(false);
-            }).catch(e => {
-                console.warn("Session check failed", e);
-                setAuthChecking(false);
-            });
-
-            const { data: { subscription } } = dbClient.auth.onAuthStateChange((_event, session) => {
-                setSession(session); setAuthChecking(false);
-            });
-            return () => subscription.unsubscribe();
-        } catch(e) {
-            setAuthChecking(false);
-        }
+        if (!dbClient) return;
+        dbClient.auth.getSession().then(({ data: { session } }) => {
+            setSession(session); setAuthChecking(false);
+        });
+        const { data: { subscription } } = dbClient.auth.onAuthStateChange((_event, session) => {
+            setSession(session); setAuthChecking(false);
+        });
+        return () => subscription.unsubscribe();
       }, []);
 
       useEffect(() => { if (session) loadAllData(); }, [session]);
 
+      // 🔄 REALTIME SUBSCRIPTION
+      useEffect(() => {
+        if (!session || !userData) return;
+
+        const channel = dbClient
+          .channel('public:trips')
+          .on('postgres_changes', 
+            { event: '*', schema: 'public', table: 'trips', filter: `user_id=eq.${userData.id}` }, 
+            (payload) => {
+              
+              if (payload.eventType === 'INSERT') {
+                  handleTripDeduction();
+                  if (currentPage === 'qr') setCurrentPage('home'); 
+                  alert("Tap In Berhasil! Saldo terpotong Rp 5.000.");
+              } else if (payload.eventType === 'UPDATE' && payload.new.status === 'completed') {
+                  if (currentPage === 'qr') setCurrentPage('home'); 
+                  alert(`Perjalanan Selesai! +${payload.new.points_earned} Poin.`);
+              }
+              setTimeout(() => loadAllData(), 1000);
+            }
+          )
+          .subscribe();
+
+        return () => { dbClient.removeChannel(channel); };
+      }, [session, userData, currentPage]);
+
+      // 🔄 AUTO POLLING
+      useEffect(() => {
+        if (currentPage !== 'qr' || !session) return;
+        const poller = setInterval(async () => {
+            const trip = await backend.getActiveTrip();
+            if (qrData?.type === 'tap_in' && trip) {
+                setActiveTrip(trip); setCurrentPage('home'); loadAllData();
+            }
+            if (qrData?.type === 'tap_out' && (!trip || trip.status === 'completed')) {
+                setActiveTrip(null); setCurrentPage('home'); loadAllData();
+                alert("Tap Out Terdeteksi (Sync)!");
+            }
+        }, 3000); 
+        return () => clearInterval(poller);
+      }, [currentPage, qrData, session]);
+
+      const calculateRealtimeMissions = (trips, user) => {
+          const now = new Date();
+          const startOfDay = new Date(); startOfDay.setHours(0,0,0,0);
+          
+          const currentDay = now.getDay();
+          const distanceToMonday = (currentDay + 6) % 7;
+          const startOfWeek = new Date(now);
+          startOfWeek.setDate(now.getDate() - distanceToMonday);
+          startOfWeek.setHours(0,0,0,0);
+
+          const completedTrips = trips.filter(t => t.status === 'completed');
+          
+          const todayTrips = completedTrips.filter(t => new Date(t.created_at || t.start_time) >= startOfDay);
+          const weeklyTrips = completedTrips.filter(t => new Date(t.created_at || t.start_time) >= startOfWeek);
+
+          const isBusy = (timeStr) => {
+              const d = new Date(timeStr);
+              const h = d.getHours();
+              return (h >= 7 && h < 9) || (h >= 16 && h < 19);
+          };
+
+          const todayBusyCount = todayTrips.filter(t => isBusy(t.created_at || t.start_time)).length;
+          const weeklyBusyCount = weeklyTrips.filter(t => isBusy(t.created_at || t.start_time)).length;
+
+          const uniqueDays = new Set(weeklyTrips.map(t => new Date(t.created_at || t.start_time).toDateString())).size;
+
+          return {
+              progress: {
+                  d1: todayTrips.length,
+                  d2: todayBusyCount,
+                  w1: weeklyTrips.length,
+                  w2: uniqueDays,
+                  w3: weeklyBusyCount
+              },
+              completed: user.completed_missions || []
+          };
+      };
+
       const loadAllData = async () => {
-        setIsLoading(true);
         try {
             const user = await backend.getUser();
             const trip = await backend.getActiveTrip();
             const inv = await backend.getInventory();
-            const miss = await backend.getMissionsProgress();
-            const lb = await backend.getLeaderboard();
-            const rank = await backend.getMyRealRank(user.points || 0);
+            const lb = await backend.getWeeklyLeaderboard();
+            const history = await backend.getTripHistory();
+            const wTrans = await backend.getWalletTransactions(user.id);
+
+            const realMissions = calculateRealtimeMissions(history, user);
+            const myStats = lb.find(u => u.id === user.id) || { weekly_points: 0, weekly_trips: 0 };
+            const rank = lb.findIndex(u => u.id === user.id) + 1;
+            
+            const startOfDay = new Date(); startOfDay.setHours(0,0,0,0);
+            const todayTripsCount = history.filter(t => new Date(t.created_at || t.start_time) >= startOfDay).length;
 
             setUserData(user); 
             setActiveTrip(trip); 
             setInventory(inv); 
-            setMissionsData(miss);
+            setMissionsData(realMissions);
             setLeaderboard(lb);
-            setMyRealRank(rank);
-        } catch (e) { console.error(e); } finally { setIsLoading(false); }
+            setMyRank(rank > 0 ? rank : '-');
+            setTripHistory(history);
+            setMyWeeklyStats({ 
+                points: myStats.weekly_points || 0, 
+                count: myStats.weekly_trips || 0,
+                todayCount: todayTripsCount
+            });
+            setWalletHistory(wTrans);
+        } catch (e) { console.error(e); }
       };
 
-      // Timer Logic Update
+      const handleTripDeduction = async () => {
+          const freshUser = await backend.getUser();
+          if (!freshUser) return;
+          const cost = 5000;
+          const newBalance = (freshUser.balance || 0) - cost;
+          await backend.updateUserBalance(freshUser.id, newBalance);
+          await backend.addWalletTransaction(freshUser.id, -cost, 'Perjalanan Bus', 'debit');
+          
+          setUserData(prev => ({ ...prev, balance: newBalance }));
+          const wTrans = await backend.getWalletTransactions(freshUser.id);
+          setWalletHistory(wTrans);
+      };
+
+      const handleTopUp = async () => {
+          if (!userData || !topUpAmount) return;
+          const newBalance = (userData.balance || 0) + topUpAmount;
+          await backend.updateUserBalance(userData.id, newBalance);
+          await backend.addWalletTransaction(userData.id, topUpAmount, 'Isi Saldo', 'credit');
+          
+          setUserData(prev => ({ ...prev, balance: newBalance }));
+          const wTrans = await backend.getWalletTransactions(userData.id);
+          setWalletHistory(wTrans);
+          
+          setTopUpAmount(null);
+          setShowTopUpModal(false);
+          alert(`Top Up Berhasil! Saldo +Rp ${topUpAmount.toLocaleString('id-ID')}`);
+      };
+
+      const handleRedeem = async () => {
+          if(!confirmModal) return;
+          try {
+              const newRewards = rewardList.map(r => r.id === confirmModal.id ? { ...r, stock: r.stock - 1 } : r);
+              setRewardList(newRewards);
+              await backend.redeemReward(confirmModal);
+              setConfirmModal(null); 
+              setCurrentPage("rewards");
+              setRewardTab("owned"); 
+              loadAllData();
+          } catch(e) { alert(e.message); }
+      };
+
+      const handleUseVoucher = (voucher) => {
+          const randomCode = Math.random().toString(36).substring(2, 12).toUpperCase();
+          setActiveVoucher({ ...voucher, code: randomCode });
+      };
+
+      const handleSimulateScanVoucher = () => {
+          setShowVoucherSuccess(true);
+          setTimeout(() => {
+              setShowVoucherSuccess(false);
+              setActiveVoucher(null);
+          }, 7000);
+      };
+
+      const handleClaimMission = async (m) => {
+          try {
+              await backend.claimMission(m.id, m.reward);
+              loadAllData();
+              alert("Misi diklaim! Poin bertambah.");
+          } catch(e) { console.error(e); }
+      };
+      
+      const handleDayClick = (dayIndex) => {
+           const todayIndex = (new Date().getDay() + 6) % 7;
+           if (dayIndex < todayIndex) {
+               setTargetRescueDate(dayIndex);
+               setShowStreakRescueModal(true);
+           }
+      };
+      
+      const confirmRescueStreak = async () => {
+        if (!userData) return;
+        const cost = 100;
+        if (userData.points < cost) {
+            alert("Poin tidak cukup untuk menyelamatkan streak.");
+            return;
+        }
+        
+        const historyKey = `streak_rescues_${userData.id}`;
+        const rescueHistory = JSON.parse(localStorage.getItem(historyKey) || '[]');
+        const now = Date.now();
+        const oneWeekAgo = now - 7 * 24 * 60 * 60 * 1000;
+        const recentRescues = rescueHistory.filter(ts => ts > oneWeekAgo);
+        
+        if (recentRescues.length >= 2) {
+            alert("Batas penyelamatan streak (2x seminggu) sudah habis.");
+            return;
+        }
+
+        try {
+            await backend.updateUserPointsAndStreak(userData.id, userData.points - cost, (userData.streak || 0) + 1, new Date().toISOString().split('T')[0]);
+            recentRescues.push(now);
+            localStorage.setItem(historyKey, JSON.stringify(recentRescues));
+            loadAllData();
+            alert("Streak berhasil diselamatkan! (-100 Poin)");
+            setShowStreakRescueModal(false);
+            setShowStreakModal(false); // Close streak modal too
+        } catch (e) {
+            console.error(e);
+            alert("Gagal menyelamatkan streak.");
+        }
+      };
+
       useEffect(() => {
         let interval = null;
         if (currentPage === "qr" && timer > 0) {
-            interval = setInterval(() => {
-                setTimer((prev) => prev - 1);
-            }, 1000);
+            interval = setInterval(() => setTimer((prev) => prev - 1), 1000);
         } else if (currentPage === "qr" && timer === 0) {
-            // Timer Expired Logic
-            alert("QR Code sudah tidak berlaku. Silakan generate ulang.");
-            setQrData(null);
-            setCurrentPage("home");
+            alert("QR Code expired."); setQrData(null); setCurrentPage("home");
         }
         return () => clearInterval(interval);
       }, [currentPage, timer]);
 
-      // GANTI fungsi generateQR yang lama dengan yang ini:
       const generateQR = () => {
-          // 1. Pastikan data user sudah ada
-          if (!userData || !userData.id) {
-              alert("Data user belum dimuat. Mohon tunggu atau login ulang.");
-              return;
-          }
-
-          // 2. PERINGATAN PENTING SOAL MOCK
-          // Kalau kamu login pake mode demo (mock-123), scanner akan error 
-          // karena 'mock-123' bukan UUID valid. Kamu HARUS login beneran (Sign Up/Login).
-          if (userData.id === 'mock-123') {
-              alert("Peringatan: Kamu sedang menggunakan User Demo (mock-123). Scanner mungkin akan error karena database butuh UUID asli. Silakan Logout dan Daftar akun baru.");
-          }
-
-          // Determine action based on current state (activeTrip exists -> tap_out, else tap_in)
-          // Also set default action to "tap_in" if uncertain
+          if (!userData || !userData.id) return;
+          
           const actionType = activeTrip ? "tap_out" : "tap_in";
-
-          // 3. Buat data JSON yang berisi User ID asli dari Supabase
-          // Format QR berbeda untuk tap in dan tap out (action berbeda)
-          const ticketPayload = {
-              uid: userData.id, // <--- INI KUNCINYA (UUID ASLI)
-              name: userData.name,
-              type: "passenger_ticket",
-              action: actionType
-          };
           
-          const ticketData = JSON.stringify(ticketPayload);
-
-          // 4. Tampilkan ke layar
-          setQrData({ 
-              type: actionType, 
-              code: ticketData, 
-              station: "Tiket Penumpang" 
-          });
-          
-          // Timer 30 detik (sesuai request)
-          setTimer(30); 
-          setCurrentPage("qr");
-      };
-
-      const handleScanSuccess = async () => {
-        if (!qrData) return;
-        setProcessingAction(true);
-        try {
-            // Simulate reading the JSON from the QR code
-            // In a real app, the scanner reads this. Here we simulate the scanner's processing.
-            const scannedData = JSON.parse(qrData.code);
-            const currentStation = activeTrip ? "Halte Dipatiukur" : "Halte Dago"; // Simulai lokasi halte
-
-            if (scannedData.action === "tap_in") {
-                const newTrip = await backend.startTrip(currentStation, "TMB-K2");
-                setActiveTrip(newTrip);
-                alert(`Berhasil Tap In di ${currentStation}!`);
-                setCurrentPage("home"); 
-            } else if (scannedData.action === "tap_out") {
-                const result = await backend.endTrip(currentStation);
-                // Save result for summary page
-                setLastTripResult(result);
-                await loadAllData();
-                setCurrentPage("trip_summary");
-            }
-        } catch (error) { 
-            console.error("Scan Error:", error);
-            alert("Gagal memproses tiket: " + error.message); 
-        } finally { setProcessingAction(false); setQrData(null); }
-      };
-
-      const handleRedeemClick = (reward) => {
-          if (!userData || (userData.points < reward.points)) {
-              alert("Poin tidak cukup!"); return;
+          if (actionType === "tap_in") {
+              const currentBalance = userData.balance || 0;
+              if (currentBalance < 5000) {
+                  setShowLowBalanceModal(true);
+                  setTimeout(() => setShowLowBalanceModal(false), 5000);
+                  return;
+              }
           }
-          setConfirmModal(reward);
+
+          const ticketPayload = { uid: userData.id, name: userData.name || 'Penumpang', type: "passenger_ticket", action: actionType };
+          setQrData({ type: actionType, code: JSON.stringify(ticketPayload) });
+          setTimer(30); setCurrentPage("qr"); 
       };
 
-      const processRedeem = async () => {
-        if(!confirmModal) return;
-        const reward = confirmModal;
-        setConfirmModal(null);
-        setProcessingAction(true);
-        try {
-            await backend.redeemReward(reward);
-            await loadAllData();
-            setRewardTab("owned");
-            alert("Berhasil menukar!");
-        } catch (e) { alert("Gagal menukar: " + e.message); } finally { setProcessingAction(false); }
-      };
+      const getStreakMessage = () => {
+          if (!userData) return "";
+          const hasTrips = tripHistory.length > 0;
+          const streak = userData.streak || 0;
+          const today = new Date(); today.setHours(0,0,0,0);
+          const lastTripStr = userData.last_trip_date;
+          
+          const offset = today.getTimezoneOffset();
+          const todayLocal = new Date(today.getTime() - (offset*60*1000));
+          const todayISO = todayLocal.toISOString().split('T')[0];
+          
+          const hasTrippedToday = lastTripStr === todayISO;
 
-      const claimMission = async (mission) => {
-         setProcessingAction(true);
-         try {
-             await backend.claimMission(mission.id, mission.reward);
-             await loadAllData();
-         } catch(e) { console.error(e); } finally { setProcessingAction(false); }
+          if (!hasTrips) return "Kamu belum naik transportasi umum :(";
+          if (streak === 0) {
+              if (lastTripStr) {
+                  const lastTripDate = new Date(lastTripStr);
+                  lastTripDate.setHours(0,0,0,0);
+                  const diffTime = today - lastTripDate;
+                  const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+                  if (diffDays > 1) return `Sudah ${diffDays - 1} hari sejak terakhir kamu naik transportasi umum :(`;
+              }
+              return "Ayo mulai petualangan streak barumu hari ini!";
+          } 
+          if (streak > 0 && !hasTrippedToday) return "Kamu belum naik transportasi hari ini :( Ayo pertahankan semangatmu!";
+          if (streak > 0 && hasTrippedToday) return `${streak} Hari Streak! Pertahankan semangatmu.`;
+          return "Ayo mulai perjalananmu!";
       };
 
       if (authChecking) return <div className="h-screen w-full flex items-center justify-center bg-white"><div className="spinner border-brand-blue border-t-transparent w-8 h-8"></div></div>;
       if (!session) return <AuthScreen onLoginSuccess={(s) => setSession(s)} />;
-      if (isLoading && !userData) return <div className="h-screen w-full flex flex-col items-center justify-center bg-white text-gray-500 gap-4"><div className="spinner border-brand-blue border-t-transparent w-10 h-10"></div><p className="text-sm font-medium animate-pulse">Memuat Data...</p></div>;
+      if (!userData) return <div className="h-screen w-full flex flex-col items-center justify-center bg-white gap-4"><div className="spinner border-brand-blue border-t-transparent w-10 h-10"></div><p>Memuat Data...</p></div>;
 
       return (
-        <PageShell currentPage={currentPage} setCurrentPage={setCurrentPage}>
-            
-            {/* --- MODAL KONFIRMASI --- */}
-            {confirmModal && (
-                <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-pop">
-                    <div className="bg-white rounded-2xl p-6 w-full max-w-xs shadow-2xl">
-                        <div className="text-center mb-4">
-                            <div className="w-16 h-16 bg-blue-50 rounded-full flex items-center justify-center mx-auto mb-3 text-3xl">
-                                {confirmModal.icon}
+        <div className="max-w-md mx-auto h-screen overflow-hidden flex flex-col bg-[#F9FAFB] relative shadow-2xl">
+            <div className="flex-1 overflow-y-auto pb-24 scrollbar-hide">
+                
+                {/* POPUP LOW BALANCE */}
+                {showLowBalanceModal && (
+                    <div className="fixed top-10 left-1/2 transform -translate-x-1/2 z-[120] bg-red-500 text-white px-6 py-3 rounded-full shadow-xl flex items-center gap-3 animate-pop">
+                        <Icons.X className="w-5 h-5" />
+                        <span className="font-bold text-sm">Saldo tidak mencukupi :( Silahkan top-up dahulu.</span>
+                    </div>
+                )}
+
+                {/* MODAL TOP UP */}
+                {showTopUpModal && (
+                    <div className="fixed inset-0 z-[90] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-pop">
+                        <div className="bg-white rounded-2xl w-full max-w-sm flex flex-col shadow-2xl overflow-hidden">
+                            <div className="p-6 bg-gradient-primary text-white">
+                                <div className="flex justify-between items-start mb-4">
+                                    <h3 className="font-bold text-lg flex items-center gap-2"><Icons.Plus className="w-5 h-5"/> Isi Saldo</h3>
+                                    <button onClick={() => setShowTopUpModal(false)} className="p-1 bg-white/20 rounded-full hover:bg-white/30"><Icons.X className="w-5 h-5" /></button>
+                                </div>
+                                <div className="text-center mb-2">
+                                    <p className="text-blue-100 text-sm">Saldo Saat Ini</p>
+                                    <h2 className="text-3xl font-bold">Rp {(userData?.balance || 0).toLocaleString('id-ID')}</h2>
+                                </div>
                             </div>
-                            <h3 className="font-bold text-lg text-gray-900">Tukar Voucher?</h3>
-                            <p className="text-sm text-gray-500 mt-1">
-                                Kamu akan menukar <span className="font-bold text-brand-blue">{confirmModal.points} Poin</span> untuk {confirmModal.name}.
-                            </p>
-                        </div>
-                        <div className="flex gap-3">
-                            <button onClick={() => setConfirmModal(null)} className="flex-1 py-2.5 rounded-xl font-bold text-gray-500 hover:bg-gray-50 text-sm">Batal</button>
-                            <button onClick={processRedeem} className="flex-1 py-2.5 rounded-xl font-bold bg-brand-blue text-white shadow-lg shadow-blue-200 text-sm">Ya, Tukar</button>
+                            <div className="p-6 bg-white">
+                                <p className="text-sm font-bold text-gray-700 mb-3">Pilih Nominal Top Up</p>
+                                <div className="grid grid-cols-2 gap-3 mb-6">
+                                    {[5000, 10000, 20000, 50000, 100000].map(amount => (
+                                        <button 
+                                            key={amount}
+                                            onClick={() => setTopUpAmount(amount)}
+                                            className={`py-3 px-3 rounded-xl text-sm font-bold border transition-all ${topUpAmount === amount ? 'border-brand-blue bg-blue-50 text-brand-blue ring-2 ring-blue-200' : 'border-gray-200 bg-white text-gray-600 hover:border-brand-blue'}`}
+                                        >
+                                            {amount.toLocaleString('id-ID')}
+                                        </button>
+                                    ))}
+                                    <button className="py-3 px-3 rounded-xl text-sm font-bold border border-gray-100 bg-gray-50 text-gray-400 cursor-not-allowed">Lainnya</button>
+                                </div>
+                                <button 
+                                    onClick={handleTopUp} 
+                                    disabled={!topUpAmount}
+                                    className="w-full py-4 bg-brand-blue text-white rounded-xl font-bold shadow-lg shadow-blue-200 disabled:opacity-50 disabled:shadow-none active:scale-95 transition-all"
+                                >
+                                    Konfirmasi Top Up
+                                </button>
+                            </div>
                         </div>
                     </div>
-                </div>
-            )}
+                )}
 
-            {/* --- MODAL STREAK (POP-UP) --- */}
-            {showStreakModal && (
-                <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-pop">
-                    <div className="bg-white rounded-3xl p-0 w-full max-w-sm shadow-2xl overflow-hidden relative">
-                        {/* Tombol Tutup */}
-                        <button onClick={() => setShowStreakModal(false)} className="absolute top-4 right-4 z-10 p-2 bg-black/10 hover:bg-black/20 rounded-full text-white transition-colors">
-                            <Icons.X className="w-5 h-5" />
-                        </button>
-                        
-                        {/* Header Warna Orange */}
-                        <div className="bg-brand-orange text-white p-6 pt-10 text-center relative">
-                            <div className="w-24 h-24 bg-white/20 rounded-full flex items-center justify-center mx-auto mb-3">
-                                <Icons.Flame className="w-14 h-14 text-yellow-300 fill-yellow-300 animate-pulse" />
+                {/* MODAL WALLET HISTORY */}
+                {showWalletHistoryModal && (
+                    <div className="fixed inset-0 z-[90] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-pop">
+                        <div className="bg-white rounded-2xl w-full max-w-sm h-[70vh] flex flex-col shadow-2xl overflow-hidden">
+                            <div className="p-4 border-b border-gray-100 flex justify-between items-center bg-white sticky top-0 z-10">
+                                <h3 className="font-bold text-gray-900 flex items-center gap-2"><Icons.History className="w-5 h-5 text-brand-yellow stroke-[2.5px]"/> Riwayat Saldo</h3>
+                                <button onClick={() => setShowWalletHistoryModal(false)} className="p-2 bg-gray-100 rounded-full hover:bg-gray-200"><Icons.X className="w-5 h-5 text-gray-600" /></button>
                             </div>
-                            <h2 className="text-4xl font-bold mb-1">{userData?.streak || 0}</h2>
-                            <p className="text-orange-100 text-sm font-medium">Hari Beruntun</p>
+                            <div className="flex-1 overflow-y-auto p-4 bg-gray-50">
+                                {walletHistory.length === 0 ? (
+                                    <div className="flex flex-col items-center justify-center h-full text-gray-400 gap-2">
+                                        <div className="bg-gray-200 p-4 rounded-full"><Icons.History className="w-8 h-8 opacity-50"/></div>
+                                        <p className="text-xs">Belum ada transaksi.</p>
+                                    </div>
+                                ) : (
+                                    <div className="space-y-3">
+                                        {walletHistory.map((tx, idx) => (
+                                            <div key={idx} className="bg-white p-4 rounded-xl border border-gray-100 flex justify-between items-center shadow-sm">
+                                                <div className="flex items-center gap-3">
+                                                    <div className={`p-2 rounded-full ${tx.amount > 0 ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}`}>
+                                                        {tx.amount > 0 ? <Icons.Plus className="w-4 h-4"/> : <Icons.Bus className="w-4 h-4"/>}
+                                                    </div>
+                                                    <div>
+                                                        <p className="font-bold text-gray-800 text-sm">{tx.description}</p>
+                                                        <p className="text-[10px] text-gray-400">{new Date(tx.created_at).toLocaleString('id-ID')}</p>
+                                                    </div>
+                                                </div>
+                                                <div className={`font-bold text-sm ${tx.amount > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                                    {tx.amount > 0 ? '+' : ''}Rp {Math.abs(tx.amount).toLocaleString('id-ID')}
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                )}
+                
+                {/* MODAL STREAK RESCUE CONFIRM */}
+                {showStreakRescueModal && (
+                    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-pop">
+                        <div className="bg-white rounded-2xl p-6 w-full max-w-xs shadow-2xl text-center">
+                            <h3 className="font-bold text-lg mb-2">Selamatkan Streak?</h3>
+                            <p className="text-sm text-gray-500 mb-4">Gunakan 100 Poin untuk mengisi streak hari yang terlewat?</p>
+                            <div className="flex gap-3">
+                                <button onClick={() => setShowStreakRescueModal(false)} className="flex-1 py-2 rounded-xl font-bold text-gray-500 hover:bg-gray-50">Batal</button>
+                                <button onClick={confirmRescueStreak} className="flex-1 py-2 rounded-xl font-bold bg-brand-yellow text-brand-black shadow-lg">Ya, Bayar</button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* MODAL VOUCHER BARCODE */}
+                {activeVoucher && !showVoucherSuccess && (
+                    <div className="fixed inset-0 z-[90] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-pop">
+                        <div className="bg-white rounded-3xl p-6 w-full max-w-sm shadow-2xl relative flex flex-col items-center">
+                            <button onClick={() => setActiveVoucher(null)} className="absolute top-4 right-4"><Icons.X className="w-6 h-6 text-gray-400" /></button>
+                            <h3 className="text-lg font-bold text-gray-900 mb-1">{activeVoucher.name}</h3>
+                            <p className="text-xs text-gray-500 mb-6">Tunjukkan ke kasir untuk scan</p>
+                            
+                            <div className="bg-white p-4 border-2 border-dashed border-gray-300 rounded-xl mb-4">
+                                <QRCodeRenderer text={activeVoucher.code} />
+                            </div>
+                            <div className="text-2xl font-bold font-mono-code tracking-widest text-gray-800 mb-6">{activeVoucher.code}</div>
+                            
+                            <button onClick={handleSimulateScanVoucher} className="w-full py-3 bg-brand-blue text-white rounded-xl font-bold shadow-lg shadow-blue-200 clean-btn">Simulasi Scan Petugas</button>
+                        </div>
+                    </div>
+                )}
+
+                {/* SUCCESS SCREEN VOUCHER */}
+                {showVoucherSuccess && (
+                    <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-green-500 text-white animate-pop">
+                        <div className="w-24 h-24 bg-white/20 rounded-full flex items-center justify-center mb-6 animate-bounce">
+                            <Icons.Check className="w-12 h-12 stroke-[3]" />
+                        </div>
+                        <h2 className="text-2xl font-bold mb-2">Voucher Berhasil!</h2>
+                        <p className="opacity-90">Selamat menikmati rewardmu.</p>
+                        <p className="absolute bottom-10 text-xs opacity-60">Menutup otomatis...</p>
+                    </div>
+                )}
+
+                {/* MODAL STREAK */}
+                {showStreakModal && (
+                    <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-pop">
+                        <div className="bg-white rounded-3xl p-0 w-full max-w-sm shadow-2xl overflow-hidden relative">
+                            <button onClick={() => setShowStreakModal(false)} className="absolute top-4 right-4 z-10 p-2 bg-black/10 hover:bg-black/20 rounded-full text-white transition-colors"><Icons.X className="w-5 h-5" /></button>
+                            <div className="bg-brand-orange text-white p-6 pt-10 text-center relative">
+                                <div className="w-24 h-24 bg-white/20 rounded-full flex items-center justify-center mx-auto mb-3">
+                                    <Icons.Flame className="w-14 h-14 text-yellow-300 fill-yellow-300 animate-pulse" />
+                                </div>
+                                <h2 className="text-4xl font-bold mb-1">{userData?.streak || 0}</h2>
+                                <p className="text-orange-100 text-sm font-medium">Hari Beruntun</p>
+                            </div>
+                            <div className="p-6">
+                                <h3 className="font-bold text-gray-900 mb-4 text-sm uppercase tracking-wide text-center">Minggu Ini</h3>
+                                <div className="flex justify-between items-end mb-6">
+                                    {['Sen','Sel','Rab','Kam','Jum','Sab','Min'].map((day, i) => {
+                                        const todayIndex = (new Date().getDay() + 6) % 7; 
+                                        const isToday = i === todayIndex;
+                                        const todayStr = new Date().toISOString().split('T')[0];
+                                        const isActiveToday = userData?.last_trip_date === todayStr;
+                                        const currentStreak = userData?.streak || 0;
+                                        let status = isToday ? (isActiveToday ? "checked" : "waiting") : (i < todayIndex ? (currentStreak >= (todayIndex - i + (isActiveToday?1:0)) ? "checked" : "missed") : "future");
+                                        if(i < todayIndex && currentStreak >= (isActiveToday ? (todayIndex - i + 1) : (todayIndex - i))) status = "checked"; 
+                                        else if (i < todayIndex) status = "missed";
+                                        
+                                        const isMissed = status === "missed";
+
+                                        return (
+                                            <div key={i} onClick={() => isMissed && handleDayClick(i)} className={`flex flex-col items-center gap-2 group ${isMissed ? 'cursor-pointer' : ''}`}>
+                                                <span className={`text-[10px] font-bold ${isToday ? "text-brand-orange" : "text-gray-400"}`}>{day}</span>
+                                                {status === "checked" && <div className="w-8 h-8 rounded-full bg-brand-orange text-white flex items-center justify-center shadow-md"><Icons.Check className="w-5 h-5 stroke-[3]" /></div>}
+                                                {status === "missed" && <div className="w-8 h-8 rounded-full bg-red-50 text-red-400 flex items-center justify-center border border-red-200 relative">
+                                                    <Icons.X className="w-4 h-4" />
+                                                    {/* Hint dot for clickable */}
+                                                    <div className="absolute -top-1 -right-1 w-2 h-2 bg-brand-yellow rounded-full animate-ping"></div>
+                                                </div>}
+                                                {status === "waiting" && <div className="w-8 h-8 rounded-full bg-white border-2 border-brand-orange border-dashed text-brand-orange flex items-center justify-center animate-pulse"><div className="w-2 h-2 bg-brand-orange rounded-full"></div></div>}
+                                                {status === "future" && <div className="w-8 h-8 rounded-full bg-gray-50 flex items-center justify-center"><div className="w-1.5 h-1.5 bg-gray-200 rounded-full"></div></div>}
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                                <div className="mt-2 text-center">
+                                    <button onClick={handleRescueStreak} className="w-full py-3 bg-brand-blue text-white rounded-xl font-bold flex items-center justify-center gap-2 shadow-lg active:scale-95 transition-transform"><Icons.Shield className="w-5 h-5"/> Selamatkan Streak (100 Poin)</button>
+                                    <p className="text-[10px] text-gray-400 mt-2">Maks. 2x dalam 7 hari</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* MODAL HISTORY */}
+                {showHistoryModal && (
+                    <div className="fixed inset-0 z-[90] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-pop">
+                        <div className="bg-white rounded-2xl w-full max-w-sm h-[70vh] flex flex-col shadow-2xl overflow-hidden">
+                            <div className="p-4 border-b border-gray-100 flex justify-between items-center bg-gray-50">
+                                <h3 className="font-bold text-gray-900">Riwayat Perjalanan</h3>
+                                <button onClick={() => setShowHistoryModal(false)} className="p-2 bg-white rounded-full text-gray-500 hover:bg-gray-100"><Icons.X className="w-5 h-5" /></button>
+                            </div>
+                            <div className="flex-1 overflow-y-auto p-4 space-y-3">
+                                {tripHistory.length === 0 ? <div className="flex flex-col items-center justify-center h-full text-gray-400 gap-2"><p className="text-xs">Belum ada riwayat.</p></div> : 
+                                    tripHistory.map((trip, idx) => (
+                                        <div key={idx} className="clean-card p-3 border-l-4 border-l-brand-blue">
+                                            <div className="flex justify-between items-start">
+                                                <div>
+                                                    <p className="text-xs text-gray-400">{trip.start_time}</p>
+                                                    <h4 className="font-bold text-gray-900 text-sm mt-1">{trip.start_station}</h4>
+                                                    <p className="text-xs text-gray-500">ke {trip.end_station || '...'}</p>
+                                                </div>
+                                                <div className={`text-xs font-bold px-2 py-1 rounded ${trip.status === 'completed' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>
+                                                    {trip.status === 'completed' ? `+${trip.points_earned || 0} Poin` : 'Aktif'}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))
+                                }
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* MODAL CONFIRM REDEEM */}
+                {confirmModal && (
+                    <div className="fixed inset-0 z-[90] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-pop">
+                        <div className="bg-white rounded-2xl p-6 w-full max-w-xs shadow-2xl">
+                            <div className="text-center mb-4">
+                                <div className="text-4xl mb-2">{confirmModal.icon}</div>
+                                <h3 className="font-bold text-lg">Tukar Voucher?</h3>
+                                <p className="text-sm text-gray-500 mt-1">Tukar <span className="font-bold text-brand-blue">{confirmModal.points} Poin</span> untuk {confirmModal.name}?</p>
+                            </div>
+                            <div className="flex gap-3">
+                                <button onClick={() => setConfirmModal(null)} className="flex-1 py-2.5 rounded-xl font-bold text-gray-500 hover:bg-gray-50 text-sm">Batal</button>
+                                <button onClick={handleRedeem} className="flex-1 py-2.5 rounded-xl font-bold bg-brand-blue text-white text-sm">Ya, Tukar</button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* --- PAGE: HOME --- */}
+                {currentPage === "home" && (
+                    <>
+                        <div className="bg-gradient-primary pb-8 px-6 pt-12 rounded-b-[2.5rem] shadow-xl text-white mb-6">
+                            <div className="flex items-center justify-between mb-6">
+                                <div><h1 className="text-2xl font-bold">Halo, {userData?.name || "User"} 👋</h1><p className="text-sm text-blue-100 mt-0.5">Siap menjelajah kota?</p></div>
+                                <div className="bg-white/20 backdrop-blur-md border border-white/30 px-3 py-1.5 rounded-full flex items-center gap-2"><div className="bg-yellow-400 p-1 rounded-full"><Icons.Zap className="w-3 h-3 text-white fill-white" /></div><span className="font-bold text-sm">{userData?.points || 0} Poin</span></div>
+                            </div>
+                            
+                            {/* SALDO CARD - Updated Design */}
+                            <div className="bg-white text-gray-900 p-6 rounded-2xl shadow-lg relative overflow-hidden group">
+                                <div className="absolute -right-6 -top-6 w-24 h-24 bg-blue-50 rounded-full group-hover:bg-blue-100 transition-colors"></div>
+                                <div className="relative z-10 flex justify-between items-center">
+                                    <div>
+                                        <p className="text-xs text-gray-500 font-bold uppercase tracking-wider mb-1 flex items-center gap-1"><Icons.Wallet className="w-4 h-4"/> Saldo Kamu</p>
+                                        <h2 className="text-3xl font-extrabold text-brand-blue">Rp {(userData?.balance || 0).toLocaleString('id-ID')}</h2>
+                                    </div>
+                                    <div className="flex flex-col gap-2">
+                                        <button onClick={() => setShowTopUpModal(true)} className="bg-brand-yellow text-brand-black p-3 rounded-xl shadow-md hover:bg-yellow-400 active:scale-95 transition-all flex items-center justify-center" title="Isi Saldo">
+                                            <Icons.Plus className="w-5 h-5 stroke-[3]" />
+                                        </button>
+                                        <button onClick={() => setShowWalletHistoryModal(true)} className="bg-gray-100 text-gray-600 p-3 rounded-xl hover:bg-gray-200 active:scale-95 transition-all flex items-center justify-center" title="Riwayat Saldo">
+                                            <Icons.History className="w-5 h-5 stroke-[2.5px] text-brand-yellow" />
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
 
-                        {/* Konten Kalender Mingguan */}
-                        <div className="p-6">
-                            <h3 className="font-bold text-gray-900 mb-4 text-sm uppercase tracking-wide text-center">Minggu Ini</h3>
-                            <div className="flex justify-between items-end">
-                                {['Sen','Sel','Rab','Kam','Jum','Sab','Min'].map((day, i) => {
-                                    const todayIndex = (new Date().getDay() + 6) % 7; 
-                                    const isToday = i === todayIndex;
-                                    const todayStr = new Date().toISOString().split('T')[0];
-                                    const isActiveToday = userData?.last_trip_date === todayStr;
-                                    const currentStreak = userData?.streak || 0;
+                        <div className="px-6 space-y-6 pb-24">
+                            
+                             {/* QR SECTION (PALING ATAS) */}
+                             {!activeTrip ? (
+                                <div className="clean-card p-6 relative overflow-hidden border-2 border-dashed border-gray-200">
+                                    <div className="relative z-10 text-center">
+                                        <h3 className="text-lg font-bold text-gray-900 mb-1">Mulai Perjalanan</h3>
+                                        <p className="text-gray-500 text-sm mb-6">Scan QR Code di halte untuk Tap In.</p>
+                                        <button onClick={generateQR} className="w-full bg-brand-blue text-white py-4 rounded-xl font-bold flex items-center justify-center gap-2 clean-btn shadow-lg shadow-blue-200"><Icons.QrCode className="w-5 h-5" />Tap In (Naik)</button>
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="bg-brand-black text-white rounded-2xl p-6 shadow-xl relative overflow-hidden">
+                                    <div className="flex items-center justify-between mb-6">
+                                        <div className="flex items-center gap-2"><span className="w-2.5 h-2.5 bg-green-500 rounded-full status-dot-active"></span><span className="text-sm font-medium text-green-400">Dalam Perjalanan</span></div>
+                                        <span className="text-xs font-mono text-gray-400">{activeTrip.start_time}</span>
+                                    </div>
+                                    <div className="flex items-center gap-4 mb-8">
+                                        <div className="w-12 h-12 bg-white/10 rounded-xl flex items-center justify-center backdrop-blur-sm"><Icons.Bus className="w-6 h-6 text-blue-300" /></div>
+                                        <div><p className="text-gray-400 text-xs uppercase tracking-wide">Bus Saat Ini</p><h3 className="text-xl font-bold">{activeTrip.bus_id}</h3><p className="text-sm text-gray-400">Dari {activeTrip.start_station}</p></div>
+                                    </div>
+                                    <button onClick={generateQR} className="w-full bg-red-600 hover:bg-red-700 text-white py-3.5 rounded-xl font-bold flex items-center justify-center gap-2 clean-btn border border-red-500"><Icons.QrCode className="w-5 h-5" />Tap Out (Turun)</button>
+                                </div>
+                            )}
 
-                                    let status = "future"; // future, checked, missed, waiting
-                                    
-                                    if (isToday) {
-                                        status = isActiveToday ? "checked" : "waiting";
-                                    } else if (i < todayIndex) {
-                                        const daysAgo = todayIndex - i;
-                                        const requiredStreak = isActiveToday ? (daysAgo + 1) : daysAgo;
-                                        if (currentStreak >= requiredStreak) {
-                                            status = "checked";
-                                        } else {
-                                            status = "missed";
-                                        }
-                                    }
+                             {/* STREAK SECTION (TENGAH) */}
+                             <button onClick={() => setShowStreakModal(true)} className="w-full text-left clean-card p-4 flex items-center gap-4 hover:bg-orange-50 transition-colors border-orange-100">
+                                <div className="w-10 h-10 bg-orange-100 rounded-full flex items-center justify-center"><Icons.Flame className="w-6 h-6 text-orange-600 fill-orange-600" /></div>
+                                <div className="flex-1">
+                                    <h4 className="font-bold text-gray-900">{userData?.streak || 0} Hari Streak!</h4>
+                                    <p className="text-xs text-gray-500 line-clamp-2 leading-relaxed">{getStreakMessage()}</p>
+                                </div>
+                                <Icons.ArrowRight className="w-4 h-4 text-gray-400" />
+                            </button>
 
+                            {/* VOUCHER MENARIK HARI INI (BAWAH) */}
+                            <div>
+                                <div className="flex justify-between items-center mb-3">
+                                    <h3 className="font-bold text-gray-900 text-sm uppercase tracking-wide flex items-center gap-2"><span className="text-lg">🔥</span> Voucher Menarik</h3>
+                                    <button onClick={() => setCurrentPage("rewards")} className="text-[10px] font-bold text-brand-blue bg-blue-50 px-2 py-1 rounded-lg">Lihat Semua</button>
+                                </div>
+                                <div className="flex gap-4 overflow-x-auto scrollbar-hide pb-4">
+                                    {rewardList.filter(r => r.popular).map(r => (
+                                        <div key={r.id} className="min-w-[200px] bg-white border border-gray-100 rounded-xl p-4 text-gray-900 relative overflow-hidden shadow-sm flex flex-col">
+                                             <div className="flex justify-between items-start mb-3">
+                                                <div className="bg-yellow-50 p-2 rounded-lg text-2xl">{r.icon}</div>
+                                                <span className="bg-red-100 text-red-600 text-[10px] font-bold px-2 py-1 rounded-full">POPULER</span>
+                                            </div>
+                                            <h4 className="font-bold text-sm leading-tight mb-1">{r.name}</h4>
+                                            <p className="text-xs text-gray-500 mb-3">{r.desc}</p>
+                                             <div className="mt-auto flex items-center justify-between">
+                                                <div className="flex items-center gap-1 font-bold text-xs text-brand-blue"><Icons.Zap className="w-3 h-3 fill-current"/> {r.points} Poin</div>
+                                                <button 
+                                                    onClick={() => setConfirmModal(r)} 
+                                                    disabled={(userData?.points || 0) < r.points || r.stock <= 0}
+                                                    className="bg-brand-blue text-white text-xs font-bold px-3 py-1.5 rounded-lg shadow-blue-200 shadow-md active:scale-95 transition-transform disabled:opacity-50 disabled:shadow-none"
+                                                >
+                                                    Tukar
+                                                </button>
+                                             </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+                    </>
+                )}
+
+                {/* --- PAGE: QR --- */}
+                {currentPage === "qr" && (
+                    <div className="max-w-md mx-auto h-screen bg-white flex flex-col relative">
+                        <div className="px-6 py-4 flex items-center justify-between border-b border-gray-100"><button onClick={() => setCurrentPage("home")} className="p-2 -ml-2 hover:bg-gray-50 rounded-full text-gray-700"><Icons.X className="w-6 h-6" /></button><span className="font-bold text-gray-900">{qrData?.type === "tap_in" ? "Tiket Masuk" : "Tiket Keluar"}</span><div className="w-8"></div></div>
+                        <div className="flex-1 flex flex-col items-center pt-10 px-6">
+                            <div className={`mb-6 px-4 py-1.5 rounded-full font-mono font-medium text-sm flex items-center gap-2 ${timer < 10 ? 'bg-red-50 text-red-600' : 'bg-blue-50 text-blue-600'}`}><Icons.Clock className="w-4 h-4" /><span>00:{timer.toString().padStart(2, '0')}</span></div>
+                            <div className="text-center mb-8"><h2 className="text-2xl font-bold text-gray-900 mb-1">{qrData?.type === "tap_in" ? "Scan untuk Naik" : "Scan untuk Turun"}</h2><p className="text-gray-500 text-sm">Arahkan kode QR ke mesin scanner di bus.</p></div>
+                            <div className="bg-white p-2 rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.08)] border border-gray-100 mb-10"><QRCodeRenderer text={qrData?.code || "expired"} /></div>
+                            <div className="w-full px-6 mt-auto mb-8"><button onClick={() => loadAllData()} className="w-full py-3 bg-gray-100 text-gray-600 rounded-xl text-sm font-bold">Cek Status Manual</button><p className="text-center text-[10px] text-gray-400 mt-2">Halaman ini akan tertutup otomatis saat scanner mendeteksi.</p></div>
+                        </div>
+                    </div>
+                )}
+
+                {/* --- PAGE: MISSIONS --- */}
+                {currentPage === "missions" && (
+                    <div className="p-6 space-y-6">
+                        <div className="bg-white rounded-xl p-4"><h1 className="text-2xl font-bold text-gray-900">Misi</h1><p className="text-sm text-gray-500">Selesaikan tantangan untuk mendapatkan poin.</p></div>
+                        
+                        {/* Daily Missions */}
+                        <div>
+                            <h3 className="font-bold text-gray-900 mb-3 text-sm uppercase tracking-wide flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-brand-blue"></span> Misi Harian</h3>
+                            <div className="space-y-3">
+                                {missionDefinitions.filter(m => m.category === 'daily').map(m => {
+                                    const progress = missionsData.progress[m.id] || 0;
+                                    const isClaimed = (missionsData.completed || []).includes(m.id);
+                                    const isCompletedToday = isClaimed && progress >= m.goal;
+                                    const canClaim = progress >= m.goal && !isClaimed;
+                                    const progressPct = (progress / m.goal) * 100;
                                     return (
-                                        <div key={i} className="flex flex-col items-center gap-2 group">
-                                            <span className={`text-[10px] font-bold ${isToday ? "text-brand-orange" : "text-gray-400"}`}>{day}</span>
-                                            
-                                            {status === "checked" && (
-                                                <div className="w-8 h-8 rounded-full bg-brand-orange text-white flex items-center justify-center shadow-md shadow-orange-100">
-                                                    <Icons.Check className="w-5 h-5 stroke-[3]" />
+                                        <div key={m.id} className="clean-card p-4">
+                                            <div className="flex items-start justify-between mb-3"><div className="flex items-center gap-3"><div className="text-2xl">{m.icon}</div><div><h4 className="font-bold text-gray-900 text-sm">{m.title}</h4><p className="text-[10px] text-gray-400 mt-0.5">{m.desc}</p><span className="text-xs font-bold text-yellow-600 bg-yellow-50 px-2 py-0.5 rounded-full mt-1 inline-block">+{m.reward} Poin</span></div></div></div>
+                                            <div className="mb-3"><div className="flex justify-between text-xs text-gray-500 mb-1"><span>Progress</span><span>{progress}/{m.goal}</span></div><div className="progress-track"><div className="progress-fill" style={{ width: `${Math.min(100, progressPct)}%`, backgroundColor: isCompletedToday ? '#10B981' : '#2563EB' }}></div></div></div>
+                                            <button onClick={() => handleClaimMission(m)} disabled={!canClaim || isCompletedToday} className={`w-full py-2.5 rounded-lg text-sm font-bold clean-btn flex justify-center items-center ${isCompletedToday ? "bg-gray-100 text-gray-400" : canClaim ? "bg-green-600 text-white" : "bg-brand-blue/10 text-brand-blue"}`}>{isCompletedToday ? "Selesai" : canClaim ? "Klaim Hadiah" : "Belum Selesai"}</button>
+                                        </div>
+                                    )
+                                })}
+                            </div>
+                        </div>
+
+                        {/* Weekly Missions */}
+                        <div>
+                            <h3 className="font-bold text-gray-900 mb-3 text-sm uppercase tracking-wide flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-purple-500"></span> Misi Mingguan</h3>
+                            <div className="space-y-3">
+                                {missionDefinitions.filter(m => m.category === 'weekly').map(m => {
+                                    const progress = missionsData.progress[m.id] || 0;
+                                    const isCompleted = (missionsData.completed || []).includes(m.id);
+                                    const canClaim = progress >= m.goal && !isCompleted;
+                                    const progressPct = (progress / m.goal) * 100;
+                                    return (
+                                        <div key={m.id} className="clean-card p-4 border border-purple-100">
+                                            <div className="flex items-start justify-between mb-3"><div className="flex items-center gap-3"><div className="text-2xl">{m.icon}</div><div><h4 className="font-bold text-gray-900 text-sm">{m.title}</h4><p className="text-[10px] text-gray-400 mt-0.5">{m.desc}</p><span className="text-xs font-bold text-purple-600 bg-purple-50 px-2 py-0.5 rounded-full mt-1 inline-block">+{m.reward} Poin</span></div></div></div>
+                                            <div className="mb-3"><div className="flex justify-between text-xs text-gray-500 mb-1"><span>Progress</span><span>{progress}/{m.goal}</span></div><div className="progress-track"><div className="progress-fill bg-purple-500" style={{ width: `${Math.min(100, progressPct)}%` }}></div></div></div>
+                                            <button onClick={() => handleClaimMission(m)} disabled={!canClaim || isCompleted} className={`w-full py-2.5 rounded-lg text-sm font-bold clean-btn flex justify-center items-center ${isCompleted ? "bg-gray-100 text-gray-400" : canClaim ? "bg-green-600 text-white" : "bg-purple-100 text-purple-600"}`}>{isCompleted ? "Selesai" : canClaim ? "Klaim Hadiah" : "Belum Selesai"}</button>
+                                        </div>
+                                    )
+                                })}
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* --- PAGE: REWARDS --- */}
+                {currentPage === "rewards" && (
+                    <>
+                        <div className="bg-white px-6 pt-10 pb-0 sticky top-0 z-30 border-b border-gray-100">
+                            <div className="flex items-center justify-between mb-4"><div><h1 className="text-2xl font-bold text-gray-900">Hadiah</h1><p className="text-sm text-gray-500">Tukarkan poinmu dengan voucher.</p></div><div className="text-right"><span className="text-xs text-gray-400 font-bold uppercase">Saldo Poin</span><div className="text-xl font-bold text-brand-blue flex items-center justify-end gap-1">{userData?.points || 0} <Icons.Zap className="w-4 h-4 fill-current"/></div></div></div>
+                            <div className="flex gap-6"><button onClick={() => setRewardTab("catalog")} className={`pb-3 text-sm font-bold border-b-2 transition-colors ${rewardTab === "catalog" ? "border-brand-blue text-brand-blue" : "border-transparent text-gray-400"}`}>Katalog</button><button onClick={() => setRewardTab("owned")} className={`pb-3 text-sm font-bold border-b-2 transition-colors ${rewardTab === "owned" ? "border-brand-blue text-brand-blue" : "border-transparent text-gray-400"}`}>Voucher Saya</button></div>
+                        </div>
+                        {rewardTab === "catalog" ? (
+                            <>
+                                <div className="px-6 py-4 overflow-x-auto scrollbar-hide flex gap-2">{['all', 'food', 'drink', 'shopping'].map(c => (<button key={c} onClick={() => setSelectedCategory(c)} className={`px-4 py-2 rounded-full text-xs font-bold whitespace-nowrap capitalize transition-colors ${selectedCategory === c ? "bg-brand-yellow text-brand-black shadow-sm" : "bg-gray-100 text-gray-500"}`}>{c}</button>))}</div>
+                                <div className="px-6 pb-6 grid grid-cols-2 gap-4">{rewardList.filter(r => (selectedCategory === 'all' || r.category === selectedCategory)).map(r => (
+                                    <div key={r.id} className="clean-card p-4 flex flex-col h-full border border-gray-100 hover:border-brand-yellow transition-all">
+                                        <div className="w-10 h-10 bg-yellow-50 rounded-full flex items-center justify-center text-2xl mb-3">{r.icon}</div>
+                                        <h4 className="font-bold text-gray-900 text-sm">{r.name}</h4>
+                                        <p className="text-xs text-gray-500 mb-3 flex-1">{r.desc}</p>
+                                        <div className="mt-auto">
+                                            <div className="flex justify-between items-center mb-2"><div className="text-brand-blue font-bold text-sm">{r.points} Poin</div><div className="text-[10px] text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">Sisa: {r.stock}</div></div>
+                                            <button onClick={() => setConfirmModal(r)} disabled={(userData?.points || 0) < r.points || r.stock <= 0} className="w-full py-2 bg-gray-900 text-white rounded-lg text-xs font-bold disabled:bg-gray-200 disabled:text-gray-400 clean-btn flex justify-center hover:bg-brand-yellow hover:text-black transition-colors">{r.stock <= 0 ? "Habis" : "Tukar"}</button>
+                                        </div>
+                                    </div>
+                                ))}</div>
+                            </>
+                        ) : (
+                            <div className="p-6 space-y-4">
+                                {inventory.length === 0 && <p className="text-center text-gray-400 text-sm mt-10">Belum ada voucher.</p>}
+                                {inventory.map((v, i) => (<div key={i} className="clean-card flex items-center p-4 gap-4 border-l-4 border-l-brand-yellow"><div className="text-3xl">{v.icon}</div><div className="flex-1"><h4 className="font-bold text-gray-900">{v.name}</h4><p className="text-xs text-gray-500">{v.desc}</p><p className="text-[10px] text-gray-400 mt-1">Dimiliki: {v.quantity}</p></div><button onClick={() => handleUseVoucher(v)} className="px-4 py-2 bg-brand-yellow/20 text-yellow-700 rounded-lg text-xs font-bold hover:bg-brand-yellow hover:text-black transition-colors">Gunakan</button></div>))}
+                            </div>
+                        )}
+                    </>
+                )}
+
+                {/* --- PAGE: COMMUNITY (ACCOUNT) --- */}
+                {currentPage === "community" && (
+                    <>
+                        <div className="bg-brand-blue text-white px-6 pt-10 pb-8 rounded-b-[2rem] mb-6 shadow-lg relative">
+                            <div className="absolute top-6 right-6 flex gap-2">
+                                <button onClick={() => setShowHistoryModal(true)} className="p-2 bg-white/10 hover:bg-white/20 rounded-full text-white backdrop-blur-sm" title="Riwayat"><Icons.History className="w-5 h-5" /></button>
+                                <button onClick={() => backend.signOut()} className="p-2 bg-red-500/20 hover:bg-red-500/40 rounded-full text-white backdrop-blur-sm" title="Keluar"><Icons.LogOut className="w-5 h-5" /></button>
+                            </div>
+                            <div className="flex items-center gap-4">
+                                <div className="w-16 h-16 bg-white/20 rounded-full flex items-center justify-center text-2xl border-2 border-brand-yellow">👤</div>
+                                <div><h2 className="text-xl font-bold">{userData?.name || "User"}</h2><p className="text-blue-100 text-sm">Peringkat #{myRank} Global</p></div>
+                            </div>
+                            <div className="flex gap-4 mt-6">
+                                <div className="bg-white/10 border border-brand-yellow/50 rounded-xl p-3 flex-1 backdrop-blur-sm"><span className="text-xs text-blue-200 block">Poin Saat Ini</span><span className="font-bold text-xl">{userData?.points || 0}</span></div>
+                                <div className="bg-white/10 border border-brand-yellow/50 rounded-xl p-3 flex-1 backdrop-blur-sm"><span className="text-xs text-blue-200 block">Trip Hari Ini</span><span className="font-bold text-xl">{myWeeklyStats.todayCount}</span></div>
+                                <div className="bg-white/10 border border-brand-yellow/50 rounded-xl p-3 flex-1 backdrop-blur-sm"><span className="text-xs text-blue-200 block">Voucher Claimed</span><span className="font-bold text-xl">{inventory.reduce((a,b)=>a+b.quantity,0)}</span></div>
+                            </div>
+                        </div>
+                        <div className="px-6 pb-6">
+                            <h3 className="font-bold text-gray-900 mb-4 text-sm uppercase tracking-wide">Leaderboard Mingguan (Top 5)</h3>
+                            <div className="space-y-3">
+                                {leaderboard.slice(0, 5).map((u, i) => {
+                                    const isMe = u.id === userData?.id;
+                                    const rank = i + 1;
+                                    return (
+                                        <div key={u.id} className={`clean-card p-4 flex items-center gap-4 ${isMe ? "border-brand-blue bg-blue-50" : ""}`}>
+                                            <span className={`font-bold w-6 text-center ${rank <= 3 ? "text-brand-yellow" : "text-gray-400"}`}>#{rank}</span>
+                                            <div className="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center text-xs">👤</div>
+                                            <div className="flex-1">
+                                                <h4 className="font-bold text-gray-900 text-sm">{u.name}</h4>
+                                                <div className="flex gap-3 mt-1">
+                                                    <span className="text-[10px] text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded">Weekly Point: {u.weekly_points || 0}</span>
+                                                    <span className="text-[10px] text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded">Total Trip: {u.weekly_trips || 0}</span>
                                                 </div>
-                                            )}
-                                            
-                                            {status === "missed" && (
-                                                // Warna Missed Diperbarui
-                                                <div className="w-8 h-8 rounded-full bg-gray-50 text-gray-400 flex items-center justify-center border border-gray-200">
-                                                    <Icons.X className="w-4 h-4" />
-                                                </div>
-                                            )}
-                                            
-                                            {status === "waiting" && (
-                                                <div className="w-8 h-8 rounded-full bg-white border-2 border-brand-orange border-dashed text-brand-orange flex items-center justify-center animate-pulse">
-                                                    <div className="w-2 h-2 bg-brand-orange rounded-full"></div>
-                                                </div>
-                                            )}
-                                            
-                                            {status === "future" && (
-                                                <div className="w-8 h-8 rounded-full bg-gray-50 flex items-center justify-center">
-                                                    <div className="w-1.5 h-1.5 bg-gray-200 rounded-full"></div>
-                                                </div>
-                                            )}
+                                            </div>
+                                            {rank <= 3 && <Icons.Award className="w-5 h-5 text-brand-yellow fill-current" />}
                                         </div>
                                     );
                                 })}
-                            </div>
-                            <div className="mt-8 bg-orange-50 rounded-xl p-4 flex items-center gap-3 border border-orange-100">
-                                <div className="p-2 bg-white rounded-full text-orange-500 shadow-sm"><Icons.Flame className="w-5 h-5" /></div>
-                                <p className="text-xs text-orange-800 leading-relaxed font-medium">
-                                    Pertahankan streakmu! <br/>Dapatkan bonus poin tiap 7 hari.
-                                </p>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {/* --- LOADING OVERLAY SAAT TRANSAKSI --- */}
-            {processingAction && (
-                <div className="fixed inset-0 z-[90] flex flex-col items-center justify-center bg-black/30 backdrop-blur-sm text-white">
-                    <div className="spinner border-white border-t-transparent w-10 h-10 mb-3"></div>
-                    <p className="font-bold">Memproses...</p>
-                </div>
-            )}
-
-            {/* PAGE CONTENT */}
-            {currentPage === "home" && (
-                <>
-                    <div className="bg-white px-6 pt-12 pb-4 sticky top-0 z-30 border-b border-gray-100">
-                        <div className="flex items-center justify-between">
-                            <div><h1 className="text-2xl font-bold text-gray-900">Halo, {userData?.name || "User"} 👋</h1><p className="text-sm text-gray-500 mt-0.5">Siap menjelajah kota hari ini?</p></div>
-                            <div className="bg-yellow-50 border border-yellow-100 px-3 py-1.5 rounded-full flex items-center gap-2"><div className="bg-yellow-400 p-1 rounded-full"><Icons.Zap className="w-3 h-3 text-white fill-white" /></div><span className="font-bold text-yellow-700 text-sm">{userData?.points || 0}</span></div>
-                        </div>
-                    </div>
-                    <div className="p-6 space-y-6">
-                        {!activeTrip ? (
-                            <div className="clean-card p-6 relative overflow-hidden"><div className="relative z-10"><h3 className="text-lg font-bold text-gray-900 mb-1">Mulai Perjalanan</h3><p className="text-gray-500 text-sm mb-6 max-w-[80%]">Scan QR Code di halte atau pintu masuk bus.</p><button onClick={generateQR} className="w-full bg-brand-blue text-white py-3.5 rounded-xl font-bold flex items-center justify-center gap-2 clean-btn shadow-lg shadow-blue-100"><Icons.QrCode className="w-5 h-5" />Tap In (Naik)</button></div></div>
-                        ) : (
-                            <div className="bg-brand-black text-white rounded-2xl p-6 shadow-xl relative overflow-hidden"><div className="flex items-center justify-between mb-6"><div className="flex items-center gap-2"><span className="w-2.5 h-2.5 bg-green-500 rounded-full status-dot-active"></span><span className="text-sm font-medium text-green-400">Sedang Berjalan</span></div><span className="text-xs font-mono text-gray-400">{activeTrip.start_time}</span></div><div className="flex items-center gap-4 mb-8"><div className="w-12 h-12 bg-white/10 rounded-xl flex items-center justify-center backdrop-blur-sm"><Icons.Bus className="w-6 h-6 text-blue-300" /></div><div><p className="text-gray-400 text-xs uppercase tracking-wide">Bus Saat Ini</p><h3 className="text-xl font-bold">{activeTrip.bus_id}</h3><p className="text-sm text-gray-400">Dari {activeTrip.start_station}</p></div></div><button onClick={generateQR} className="w-full bg-red-600 hover:bg-red-700 text-white py-3.5 rounded-xl font-bold flex items-center justify-center gap-2 clean-btn border border-red-500"><Icons.QrCode className="w-5 h-5" />Tap Out (Turun)</button></div>
-                        )}
-                        <button onClick={() => setShowStreakModal(true)} className="w-full text-left clean-card p-4 flex items-center gap-4 hover:bg-orange-50 transition-colors border-orange-100"><div className="w-10 h-10 bg-orange-100 rounded-full flex items-center justify-center"><Icons.Flame className="w-6 h-6 text-orange-600 fill-orange-600" /></div><div className="flex-1"><h4 className="font-bold text-gray-900">{userData?.streak || 0} Hari Streak!</h4><p className="text-xs text-gray-500">Pertahankan semangatmu.</p></div><Icons.ArrowRight className="w-4 h-4 text-gray-400" /></button>
-                    </div>
-                </>
-            )}
-
-            {/* Other Pages (QR, Summary, Rewards, Missions, Community) remain same but need to be rendered when currentPage matches */}
-            {currentPage === "qr" && (
-                <div className="max-w-md mx-auto h-screen bg-white flex flex-col relative">
-                    <div className="px-6 py-4 flex items-center justify-between border-b border-gray-100"><button onClick={() => setCurrentPage("home")} className="p-2 -ml-2 hover:bg-gray-50 rounded-full text-gray-700"><Icons.X className="w-6 h-6" /></button><span className="font-bold text-gray-900">{qrData?.type === "tap_in" ? "Tiket Masuk" : "Tiket Keluar"}</span><div className="w-8"></div></div>
-                    <div className="flex-1 flex flex-col items-center pt-10 px-6">
-                        <div className={`mb-6 px-4 py-1.5 rounded-full font-mono font-medium text-sm flex items-center gap-2 ${timer < 10 ? 'bg-red-50 text-red-600' : 'bg-blue-50 text-blue-600'}`}><Icons.Clock className="w-4 h-4" /><span>00:{timer.toString().padStart(2, '0')}</span></div>
-                        <div className="text-center mb-8"><h2 className="text-2xl font-bold text-gray-900 mb-1">{qrData?.type === "tap_in" ? "Scan untuk Naik" : "Scan untuk Turun"}</h2><p className="text-gray-500 text-sm">Arahkan kode QR ke mesin scanner di bus.</p></div>
-                        <div className="bg-white p-2 rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.08)] border border-gray-100 mb-10"><QRCodeRenderer text={qrData?.code || "expired"} /></div>
-                        <div className="w-full mt-auto mb-8"><button onClick={handleScanSuccess} disabled={processingAction} className={`w-full py-4 rounded-xl font-bold text-white shadow-lg clean-btn flex items-center justify-center gap-2 ${qrData?.type === "tap_in" ? "bg-brand-blue" : "bg-brand-green"}`}>{processingAction ? <div className="spinner w-5 h-5"></div> : <>{qrData?.type === "tap_in" ? "Simulasi Tap In (Naik)" : "Simulasi Tap Out (Turun)"}<Icons.ArrowRight className="w-5 h-5" /></>}</button></div>
-                    </div>
-                </div>
-            )}
-
-            {currentPage === "trip_summary" && (
-                <div className="max-w-md mx-auto h-screen bg-white flex flex-col items-center justify-center p-8 text-center">
-                    <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mb-6 animate-[bounce_1s_infinite]"><Icons.Award className="w-10 h-10 text-green-600" /></div>
-                    <h2 className="text-2xl font-bold text-gray-900 mb-2">Perjalanan Selesai!</h2>
-                    <div className="w-full clean-card p-6 mb-6 bg-gray-50">
-                        <div className="flex justify-between items-center mb-1">
-                            <span className="text-gray-500 text-sm">Halte Awal</span>
-                            <span className="font-bold text-gray-900 text-sm">{lastTripResult?.start_station || '-'}</span>
-                        </div>
-                        <div className="flex justify-between items-center mb-3">
-                            <span className="text-gray-500 text-sm">Halte Akhir</span>
-                            <span className="font-bold text-gray-900 text-sm">{lastTripResult?.end_station || '-'}</span>
-                        </div>
-                        <div className="border-t border-gray-100 my-2"></div>
-                        <div className="flex justify-between items-center">
-                            <span className="text-gray-900 font-bold">Total Poin</span>
-                            <span className="font-bold text-xl text-brand-blue flex items-center gap-1">+{lastTripResult?.points_earned || 0} <Icons.Zap className="w-5 h-5 fill-current"/></span>
-                        </div>
-                    </div>
-                    <button onClick={() => setCurrentPage("home")} className="w-full bg-brand-black text-white py-4 rounded-xl font-bold clean-btn">Kembali ke Beranda</button>
-                </div>
-            )}
-
-            {currentPage === "rewards" && (
-                <>
-                    <div className="bg-white px-6 pt-10 pb-0 sticky top-0 z-30 border-b border-gray-100">
-                        <div className="flex items-center justify-between mb-4"><div><h1 className="text-2xl font-bold text-gray-900">Hadiah</h1><p className="text-sm text-gray-500">Tukarkan poinmu dengan voucher.</p></div><div className="text-right"><span className="text-xs text-gray-400 font-bold uppercase">Saldo Poin</span><div className="text-xl font-bold text-brand-blue flex items-center justify-end gap-1">{userData?.points || 0} <Icons.Zap className="w-4 h-4 fill-current"/></div></div></div>
-                        <div className="flex gap-6"><button onClick={() => setRewardTab("catalog")} className={`pb-3 text-sm font-bold border-b-2 transition-colors ${rewardTab === "catalog" ? "border-brand-blue text-brand-blue" : "border-transparent text-gray-400"}`}>Katalog</button><button onClick={() => setRewardTab("owned")} className={`pb-3 text-sm font-bold border-b-2 transition-colors ${rewardTab === "owned" ? "border-brand-blue text-brand-blue" : "border-transparent text-gray-400"}`}>Voucher Saya</button></div>
-                    </div>
-                    {rewardTab === "catalog" ? (
-                        <>
-                            <div className="px-6 py-4 overflow-x-auto scrollbar-hide flex gap-2">{['all', 'food', 'drink', 'shopping'].map(c => (<button key={c} onClick={() => setSelectedCategory(c)} className={`px-4 py-2 rounded-full text-xs font-bold whitespace-nowrap capitalize transition-colors ${selectedCategory === c ? "bg-brand-black text-white" : "bg-gray-100 text-gray-500"}`}>{c}</button>))}</div>
-                            <div className="px-6 pb-6 grid grid-cols-2 gap-4">{rewardList.filter(r => selectedCategory === 'all' || r.category === selectedCategory).map(r => (
-                                <div key={r.id} className="clean-card p-4 flex flex-col h-full"><div className="w-10 h-10 bg-gray-50 rounded-full flex items-center justify-center text-2xl mb-3">{r.icon}</div><h4 className="font-bold text-gray-900 text-sm">{r.name}</h4><p className="text-xs text-gray-500 mb-3 flex-1">{r.desc}</p><div className="mt-auto"><div className="text-brand-blue font-bold text-sm mb-2">{r.points} Poin</div><button onClick={() => handleRedeemClick(r)} disabled={(userData?.points || 0) < r.points || processingAction} className="w-full py-2 bg-gray-900 text-white rounded-lg text-xs font-bold disabled:bg-gray-200 disabled:text-gray-400 clean-btn flex justify-center">Tukar</button></div></div>
-                            ))}</div>
-                        </>
-                    ) : (
-                        <div className="p-6 space-y-4">
-                            {inventory.length === 0 && <p className="text-center text-gray-400 text-sm mt-10">Belum ada voucher.</p>}
-                            {inventory.map((v, i) => (<div key={i} className="clean-card flex items-center p-4 gap-4 border-l-4 border-l-brand-blue"><div className="text-3xl">{v.icon}</div><div className="flex-1"><h4 className="font-bold text-gray-900">{v.name}</h4><p className="text-xs text-gray-500">{v.desc_text}</p><p className="text-[10px] text-gray-400 mt-1">Dimiliki: {v.quantity}</p></div><button className="px-4 py-2 bg-brand-blue/10 text-brand-blue rounded-lg text-xs font-bold">Gunakan</button></div>))}
-                        </div>
-                    )}
-                </>
-            )}
-
-            {currentPage === "missions" && (
-                <div className="p-6 space-y-4">
-                    <div className="bg-white rounded-xl p-4 mb-4"><h1 className="text-2xl font-bold text-gray-900">Misi</h1><p className="text-sm text-gray-500">Selesaikan tantangan untuk mendapatkan poin.</p></div>
-                    {missionDefinitions.map(m => {
-                        const progress = missionsData.progress[m.id] || 0;
-                        const isCompleted = (missionsData.completed || []).includes(m.id);
-                        const canClaim = progress >= m.goal && !isCompleted;
-                        const progressPct = (progress / m.goal) * 100;
-                        return (
-                            <div key={m.id} className="clean-card p-4">
-                                <div className="flex items-start justify-between mb-3"><div className="flex items-center gap-3"><div className="text-2xl">{m.icon}</div><div><h4 className="font-bold text-gray-900 text-sm">{m.title}</h4><span className="text-xs font-bold text-yellow-600 bg-yellow-50 px-2 py-0.5 rounded-full mt-1 inline-block">+{m.reward} Poin</span></div></div></div>
-                                <div className="mb-3"><div className="flex justify-between text-xs text-gray-500 mb-1"><span>Progress</span><span>{progress}/{m.goal}</span></div><div className="progress-track"><div className="progress-fill" style={{ width: `${Math.min(100, progressPct)}%`, backgroundColor: isCompleted ? '#10B981' : '#2563EB' }}></div></div></div>
-                                <button onClick={() => claimMission(m)} disabled={isCompleted || processingAction} className={`w-full py-2.5 rounded-lg text-sm font-bold clean-btn flex justify-center items-center ${isCompleted ? "bg-gray-100 text-gray-400" : canClaim ? "bg-green-600 text-white" : "bg-brand-blue text-white"}`}>{isCompleted ? "Selesai" : canClaim ? "Klaim Hadiah" : "Tambah Progress"}</button>
-                            </div>
-                        )
-                    })}
-                </div>
-            )}
-
-            {currentPage === "community" && (
-                <>
-                {(() => {
-                    const rankDisplay = myRealRank ? `#${myRealRank} Global` : "Memuat...";
-                    return (
-                        <div className="bg-brand-blue text-white px-6 pt-10 pb-8 rounded-b-[2rem] mb-6 shadow-lg">
-                            <div className="flex items-center gap-4">
-                                <div className="w-16 h-16 bg-white/20 rounded-full flex items-center justify-center text-2xl border-2 border-white/30">👤</div>
-                                <div>
-                                    <h2 className="text-xl font-bold">{userData?.name || "User"}</h2>
-                                    <p className="text-blue-100 text-sm">Peringkat {rankDisplay}</p>
-                                </div>
-                            </div>
-                            <div className="flex gap-4 mt-6">
-                                <div className="bg-white/10 rounded-xl p-3 flex-1 backdrop-blur-sm">
-                                    <span className="text-xs text-blue-200 block">Total Poin</span>
-                                    <span className="font-bold text-xl">{userData?.points || 0}</span>
-                                </div>
-                                <div className="bg-white/10 rounded-xl p-3 flex-1 backdrop-blur-sm">
-                                    <span className="text-xs text-blue-200 block">Streak</span>
-                                    <span className="font-bold text-xl">{userData?.streak || 0}</span>
-                                </div>
+                                {/* Rank User Sendiri jika di luar 5 besar */}
+                                {(() => {
+                                    const myIndex = leaderboard.findIndex(u => u.id === userData?.id);
+                                    if (myIndex >= 5 || myRank > 5) {
+                                        return (
+                                            <>
+                                                <div className="clean-card p-4 flex items-center gap-4 border-brand-blue bg-blue-50 shadow-md mt-2">
+                                                    <span className="font-bold w-6 text-center text-brand-blue">#{myRank}</span>
+                                                    <div className="w-8 h-8 bg-white text-brand-blue rounded-full flex items-center justify-center text-xs font-bold">👤</div>
+                                                    <div className="flex-1">
+                                                        <h4 className="font-bold text-gray-900 text-sm">{userData?.name} (Kamu)</h4>
+                                                        <div className="flex gap-3 mt-1">
+                                                            <span className="text-[10px] text-blue-600 bg-blue-100 px-1.5 py-0.5 rounded">Weekly Point: {myWeeklyStats.points}</span>
+                                                            <span className="text-[10px] text-blue-600 bg-blue-100 px-1.5 py-0.5 rounded">Total Trip: {myWeeklyStats.count}</span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </>
+                                        );
+                                    }
+                                })()}
                             </div>
                         </div>
-                    );
-                })()}
+                    </>
+                )}
 
-                    <div className="px-6 pb-6">
-                        <h3 className="font-bold text-gray-900 mb-4 text-sm uppercase tracking-wide">Leaderboard Top 20</h3>
-                        <div className="space-y-3">
-                            {leaderboard.length === 0 ? (
-                                <p className="text-center text-gray-400 text-xs">Belum ada data leaderboard.</p>
-                            ) : (
-                                leaderboard.map((u, i) => {
-                                    const isMe = u.id === userData?.id;
-                                    const rank = i + 1;
-                                    const avatarIcons = ["👨‍✈️", "👩‍💼", "👨‍🎓", "👩‍🎤", "🦸‍♂️", "🧕", "🧔", "👱‍♀️"];
-                                    const icon = isMe ? "👤" : avatarIcons[i % avatarIcons.length];
-
-                                    return (
-                                        <div key={u.id} className={`clean-card p-4 flex items-center gap-4 ${isMe ? "border-brand-blue bg-blue-50" : ""}`}>
-                                            <span className={`font-bold w-6 text-center ${rank <= 3 ? "text-yellow-500" : "text-gray-400"}`}>#{rank}</span>
-                                            <div className="w-10 h-10 bg-gray-100 rounded-full flex items-center justify-center text-lg">{icon}</div>
-                                            <div className="flex-1">
-                                                <h4 className="font-bold text-gray-900 text-sm flex items-center gap-2">
-                                                    {u.name || 'User Tanpa Nama'}
-                                                </h4>
-                                                <p className="text-xs text-gray-500">{u.points} Poin</p>
-                                            </div>
-                                            {rank <= 3 && <Icons.Award className="w-5 h-5 text-yellow-500" />}
-                                        </div>
-                                    );
-                                })
-                            )}
-                        </div>
-                    </div>
-                </>
-            )}
-
-        </PageShell>
+            </div>
+            <BottomNav currentPage={currentPage} setCurrentPage={setCurrentPage} />
+        </div>
       );
     }
 
